@@ -1,0 +1,1051 @@
+"use client";
+
+import { useEffect, useState, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
+import { Button } from "@/components/retroui/Button";
+import { Card } from "@/components/retroui/Card";
+import { Badge } from "@/components/retroui/Badge";
+import { AsciiAnimation, GridPattern, DotPattern } from "@/components/effects";
+import { Send, Download, RefreshCw, ArrowLeft, Code, Eye, MessageSquare, Terminal, Globe, Zap, Loader2 } from "lucide-react";
+import { authClient, useSession } from "@/lib/auth-client";
+import { motion, AnimatePresence } from "framer-motion";
+import CodeApplicationProgress, { type CodeApplicationState } from "@/components/CodeApplicationProgress";
+
+// Chat message types
+interface ChatMessage {
+  id: string;
+  type: 'user' | 'ai' | 'system' | 'error' | 'progress';
+  content: string;
+  timestamp: Date;
+  metadata?: {
+    scrapedUrl?: string;
+    stage?: string;
+  };
+}
+
+// Loading stages
+interface LoadingStage {
+  stage: 'gathering' | 'planning' | 'generating' | null;
+  message: string;
+}
+
+export default function BuilderPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // === AUTH STATE ===
+  const [session, setSession] = useState<any>(undefined);
+  const [authChecked, setAuthChecked] = useState(false);
+  
+  // === PROJECT STATE ===
+  const [targetUrl, setTargetUrl] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState<string>("openrouter/free");
+  const [isLoading, setIsLoading] = useState(true);
+  const [sandboxUrl, setSandboxUrl] = useState<string>("");
+  const [generatedCode, setGeneratedCode] = useState<string>("");
+  const [parsedFiles, setParsedFiles] = useState<{path: string, content: string}[]>([]);
+  const [chatMessage, setChatMessage] = useState("");
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [activeTab, setActiveTab] = useState<"preview" | "code" | "chat">("chat");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  
+  // === NEW: Visual feedback states ===
+  const [urlScreenshot, setUrlScreenshot] = useState<string | null>(null);
+  const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false);
+  const [screenshotError, setScreenshotError] = useState<string | null>(null);
+  const [isScreenshotLoaded, setIsScreenshotLoaded] = useState(false);
+  const [loadingStage, setLoadingStage] = useState<LoadingStage['stage']>(null);
+  const [isStartingGeneration, setIsStartingGeneration] = useState(false);
+  const [showAnalyzingOverlay, setShowAnalyzingOverlay] = useState(false);
+  
+  // === NEW: Code application state ===
+  const [codeApplicationState, setCodeApplicationState] = useState<CodeApplicationState>(({
+    stage: null
+  }));
+  
+  // === NEW: Generation progress ===
+  const [generationProgress, setGenerationProgress] = useState({
+    isGenerating: false,
+    status: '',
+    isStreaming: false,
+    streamedCode: '',
+    files: [] as { path: string; content: string; completed: boolean }[],
+  });
+  
+  // === NEW: Sandbox creation ref to prevent duplicate creation ===
+  const sandboxCreationRef = useRef<boolean>(false);
+  
+  // === EFFECTS ===
+  
+  // Auth check effect
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const sessionData = await authClient.getSession();
+        if (sessionData.data) {
+          setSession(sessionData.data);
+        } else {
+          setSession(null);
+        }
+      } catch (error) {
+        setSession(null);
+      } finally {
+        setAuthChecked(true);
+      }
+    };
+    
+    checkSession();
+  }, []);
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!session) {
+      router.push('/');
+    }
+  }, [authChecked, session, router]);
+
+  // Handle project initialization
+  useEffect(() => {
+    if (!authChecked || !session) return;
+
+    const url = sessionStorage.getItem('targetUrl');
+    const model = sessionStorage.getItem('selectedModel') || "openrouter/free";
+    const existingProjectId = new URLSearchParams(window.location.search).get('projectId');
+    
+    // If no project context, show empty builder state
+    if (!url && !existingProjectId) {
+      setIsLoading(false);
+      // Add welcome message
+      addChatMessage({
+        type: 'system',
+        content: 'Welcome! Enter a URL above to start cloning a website, or chat with me to build something new.',
+      });
+      return;
+    }
+
+    // Load existing project
+    if (existingProjectId) {
+      setProjectId(existingProjectId);
+      loadProject(existingProjectId);
+      return;
+    }
+
+    // Start new project generation from URL
+    if (url) {
+      setTargetUrl(url);
+      setSelectedModel(model);
+      // Clear session storage after reading
+      sessionStorage.removeItem('targetUrl');
+      sessionStorage.removeItem('selectedModel');
+      // Start generation process
+      startGeneration(url, model);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authChecked, session]);
+
+  // Scroll chat to bottom
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
+
+  // === EFFECTS ===
+  
+  // Auth check effect - runs once on mount
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        console.log("[Builder] Checking session...");
+        const sessionData = await authClient.getSession();
+        console.log("[Builder] Session data:", JSON.stringify(sessionData));
+        console.log("[Builder] Has data:", !!sessionData.data);
+        
+        if (sessionData.data) {
+          console.log("[Builder] Session data exists, user authenticated");
+          setSession(sessionData.data);
+        } else {
+          console.log("[Builder] No session data found");
+          setSession(null);
+        }
+      } catch (error) {
+        console.error("[Builder] Auth check failed:", error);
+        setSession(null);
+      } finally {
+        console.log("[Builder] Auth check complete, setting authChecked=true");
+        setAuthChecked(true);
+      }
+    };
+    
+    checkSession();
+  }, []);
+
+  // Handle auth state and redirect if not authenticated
+  useEffect(() => {
+    console.log("[Builder] Auth effect running:", { authChecked, session: !!session });
+    
+    // Wait for auth check to complete
+    if (!authChecked) {
+      console.log("[Builder] Waiting for auth check...");
+      return;
+    }
+
+    // Redirect if not authenticated
+    if (!session) {
+      console.log("[Builder] REDIRECT: No session, redirecting to /");
+      router.push('/');
+      return;
+    }
+
+    console.log("[Builder] User authenticated:", session.user?.email);
+  }, [authChecked, session, router]);
+
+  // Handle project initialization after auth is confirmed
+  useEffect(() => {
+    // Only proceed if auth check is done and user is authenticated
+    if (!authChecked || !session) {
+      return;
+    }
+
+    const url = sessionStorage.getItem('targetUrl');
+    const model = sessionStorage.getItem('selectedModel') || "openrouter/free";
+    const existingProjectId = new URLSearchParams(window.location.search).get('projectId');
+    
+    console.log("[Builder] Project init:", { url, existingProjectId, hasUser: !!session?.user });
+
+    // If no project context, just stay on builder page with empty state
+    // Don't redirect - let user see the builder interface
+    if (!url && !existingProjectId) {
+      console.log("[Builder] No project context, showing empty builder state");
+      setIsLoading(false);
+      return;
+    }
+
+    // Load existing project
+    if (existingProjectId) {
+      console.log("[Builder] Loading existing project:", existingProjectId);
+      setProjectId(existingProjectId);
+      loadProject(existingProjectId);
+      return;
+    }
+
+    // Start new project generation
+    if (url) {
+      console.log("[Builder] Starting new project for:", url);
+      setTargetUrl(url);
+      setSelectedModel(model);
+      // Clear session storage after reading to prevent re-triggering
+      sessionStorage.removeItem('targetUrl');
+      sessionStorage.removeItem('selectedModel');
+      generateWebsite(url, model);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authChecked, session]);
+
+  // Scroll chat to bottom on new messages
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
+
+  // Cleanup sandbox on unmount
+  useEffect(() => {
+    return () => {
+      console.log('[Builder] Component unmounting, cleaning up sandbox...');
+      fetch('/api/cleanup-sandbox', { method: 'POST' }).catch(err => {
+        console.error('[Builder] Failed to cleanup sandbox:', err);
+      });
+    };
+  }, []);
+
+  const loadProject = async (id: string) => {
+    try {
+      setIsLoading(true);
+      const response = await fetch(`/api/projects/${id}`);
+      if (!response.ok) {
+        throw new Error('Failed to load project');
+      }
+      const data = await response.json();
+      const project = data.project;
+
+      setTargetUrl(project.sourceUrl || '');
+      setSelectedModel('openrouter/free');
+      setSandboxUrl(project.sandboxUrl || '');
+      setChatHistory(project.conversations || []);
+
+      // Load files
+      if (project.files && project.files.length > 0) {
+        const files = project.files.map((f: any) => ({
+          path: f.path,
+          content: f.content
+        }));
+        setParsedFiles(files);
+        if (files.length > 0) {
+          setSelectedFile(files[0].path);
+        }
+      }
+
+      setIsLoading(false);
+      toast.success('Project loaded successfully');
+    } catch (error) {
+      console.error('Failed to load project:', error);
+      toast.error('Failed to load project');
+      router.push('/projects');
+    }
+  };
+
+  const saveProject = async (url: string, sandboxId: string, sandboxUrl: string, files: {path: string, content: string}[], code: string) => {
+    try {
+      // Create project
+      const projectRes = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: url.replace(/https?:\/\//, '').split('/')[0],
+          description: `Generated from ${url}`,
+          sourceUrl: url,
+          style: 'modern',
+        }),
+      });
+
+      if (!projectRes.ok) {
+        throw new Error('Failed to create project');
+      }
+
+      const projectData = await projectRes.json();
+      const newProjectId = projectData.project.id;
+      setProjectId(newProjectId);
+
+      // Save files
+      for (const file of files) {
+        await fetch(`/api/projects/${newProjectId}/files`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            path: file.path,
+            content: file.content,
+            language: file.path.endsWith('.jsx') ? 'jsx' : file.path.endsWith('.css') ? 'css' : 'javascript',
+          }),
+        });
+      }
+
+      // Update project with sandbox info
+      await fetch(`/api/projects/${newProjectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandboxId,
+          sandboxUrl,
+          status: 'ready',
+        }),
+      });
+
+      toast.success('Project saved successfully');
+    } catch (error) {
+      console.error('Failed to save project:', error);
+      toast.error('Failed to save project');
+    }
+  };
+
+  const saveConversation = async (projectId: string, role: string, content: string) => {
+    try {
+      await fetch(`/api/projects/${projectId}/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role, content }),
+      });
+    } catch (error) {
+      console.error('Failed to save conversation:', error);
+    }
+  };
+
+  const generateWebsite = async (url: string, model: string) => {
+    try {
+      setIsGenerating(true);
+      setProgressSteps([]);
+
+      // Step 1: Scrape URL (do this first while sandbox creates in parallel)
+      setProgress("Scraping website content...");
+      setProgressSteps(prev => [...prev, "⏳ Scraping website"]);
+      const scrapeRes = await fetch('/api/scrape-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      const scrapeData = await scrapeRes.json();
+
+      if (!scrapeData.success) {
+        throw new Error(scrapeData.error || "Failed to scrape URL");
+      }
+      setProgressSteps(prev => [...prev, "✓ Scraping website"]);
+
+      // Step 2: Create sandbox in parallel with code generation
+      setProgress("Creating sandbox environment...");
+      setProgressSteps(prev => [...prev, "⏳ Creating sandbox"]);
+      
+      const sandboxPromise = Promise.race([
+        fetch('/api/create-sandbox', { method: 'POST' })
+          .then(res => res.json())
+          .then(data => {
+            if (!data.success) throw new Error(data.error || "Failed to create sandbox");
+            setSandboxUrl(data.url);
+            setProgressSteps(prev => [...prev, "✓ Sandbox ready"]);
+            return data;
+          }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("Sandbox creation timeout (60s)")), 60000)
+        )
+      ]);
+
+      // Step 3: Generate code (stream) - start immediately
+      setProgress("AI is generating code...");
+      setProgressSteps(prev => [...prev, "⏳ AI generating code..."]);
+      const prompt = `Recreate this website: ${url}`;
+      const generateRes = await fetch('/api/generate-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          scrapedContent: scrapeData.content,
+          model
+        })
+      });
+
+      const reader = generateRes.body?.getReader();
+      if (!reader) throw new Error("Failed to start generation");
+
+      let fullContent = "";
+      let lastUpdate = Date.now();
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = new TextDecoder().decode(value);
+        const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'content') {
+              fullContent += data.content;
+            } else if (data.type === 'status') {
+              setProgress(data.message);
+            } else if (data.type === 'progress') {
+              setProgress(data.message);
+            } else if (data.type === 'error') {
+              throw new Error(data.error);
+            }
+          } catch {}
+        }
+      }
+
+      setGeneratedCode(fullContent);
+      setProgressSteps(prev => [...prev, "✓ Code generation complete"]);
+
+      // Parse files for display
+      const fileRegex = /<file path="([^"]+)">([\s\S]*?)(?:<\/file>|<file path="|$)/g;
+      const files: {path: string, content: string}[] = [];
+      let match;
+      while ((match = fileRegex.exec(fullContent)) !== null) {
+        let content = match[2].trim();
+        content = content.replace(/<\/file>$/, '').trim();
+        if (content.length > 0) {
+          files.push({ path: match[1], content });
+        }
+      }
+      setParsedFiles(files);
+      if (files.length > 0) {
+        setSelectedFile(files[0].path);
+      }
+
+      // Wait for sandbox creation to complete
+      setProgress("Waiting for sandbox to be ready...");
+      const sandboxData = await sandboxPromise;
+
+      // Step 4: Apply code to sandbox
+      setProgress("Applying code to sandbox...");
+      setProgressSteps(prev => [...prev, "⏳ Applying to sandbox"]);
+      const applyRes = await fetch('/api/apply-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          response: fullContent,
+          sandboxId: sandboxData.sandboxId
+        })
+      });
+      const applyData = await applyRes.json();
+
+      if (!applyData.success) {
+        throw new Error(applyData.error || "Failed to apply code");
+      }
+
+      setProgressSteps(prev => [...prev, `✓ Applied ${applyData.results?.filesCreated?.length || 0} files`]);
+      setProgress("Complete!");
+      setIsLoading(false);
+      setIsGenerating(false);
+      toast.success(`Website generated with ${files.length} files!`);
+
+      // Save project to database
+      await saveProject(url, sandboxData.sandboxId, sandboxData.url, files, fullContent);
+
+    } catch (error) {
+      console.error("Error generating website:", error);
+      toast.error((error as Error).message || "Failed to generate website");
+      setProgress("Error occurred");
+      setProgressSteps(prev => [...prev, "✗ Error occurred"]);
+      setIsGenerating(false);
+      setIsLoading(false); // Ensure loading is cleared on error
+    }
+  };
+
+  const handleChat = async () => {
+    if (!chatMessage.trim()) return;
+
+    const userMsg = chatMessage;
+    setChatHistory(prev => [...prev, { role: "user", content: userMsg }]);
+    setChatMessage("");
+    setCurrentAiMessage("");
+
+    setIsGenerating(true);
+
+    // Start sandbox creation in parallel if it doesn't exist
+    const sandboxPromise = !sandboxUrl ? (async () => {
+      try {
+        setProgress("Creating sandbox environment...");
+        const sandboxRes = await fetch('/api/create-sandbox', { method: 'POST' });
+        const sandboxData = await sandboxRes.json();
+
+        if (!sandboxData.success) {
+          throw new Error(sandboxData.error || "Failed to create sandbox");
+        }
+
+        setSandboxUrl(sandboxData.url);
+        setProgress("");
+        return sandboxData;
+      } catch (error) {
+        console.error("Sandbox creation failed:", error);
+        throw error;
+      }
+    })() : Promise.resolve(null);
+
+    try {
+      // Start code generation immediately (streaming)
+      const res = await fetch('/api/generate-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: userMsg,
+          scrapedContent: `Previous conversation:\n${chatHistory.map(h => `${h.role}: ${h.content}`).join('\n')}\n\nCurrent code:\n${generatedCode}`,
+          model: selectedModel,
+          isChat: true
+        })
+      });
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("Failed to start chat");
+
+      let fullContent = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = new TextDecoder().decode(value);
+        const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'content') {
+              fullContent += data.content;
+              setCurrentAiMessage(fullContent);
+            } else if (data.type === 'status') {
+              setProgress(data.message);
+            } else if (data.type === 'progress') {
+              setProgress(data.message);
+            } else if (data.type === 'error') {
+              toast.error(data.error);
+              setProgress("Error occurred");
+            }
+          } catch {}
+        }
+      }
+
+      // Wait for sandbox creation to complete if it was started
+      try {
+        await sandboxPromise;
+      } catch (error) {
+        toast.error("Failed to create sandbox");
+        setIsGenerating(false);
+        return;
+      }
+
+      // Parse the response to separate text from code blocks
+      const { textResponse, codeBlocks } = parseAiResponse(fullContent);
+      
+      // Add only text response to chat history
+      setChatHistory(prev => [...prev, { role: "assistant", content: textResponse }]);
+      setCurrentAiMessage("");
+
+      // Save conversation to database if project exists
+      if (projectId) {
+        await saveConversation(projectId, "user", userMsg);
+        await saveConversation(projectId, "assistant", textResponse);
+      }
+
+      // If there are code blocks, apply them in the background
+      if (codeBlocks.length > 0) {
+        setIsApplyingCode(true);
+        
+        // Update generated code with new code blocks
+        const updatedCode = codeBlocks.join('\n\n');
+        setGeneratedCode(updatedCode);
+        
+        // Parse and update files
+        const fileRegex = /<file path="([^"]+)">([\s\S]*?)(?:<\/file>|<file path="|$)/g;
+        const files: {path: string, content: string}[] = [];
+        let match;
+        while ((match = fileRegex.exec(updatedCode)) !== null) {
+          let content = match[2].trim();
+          content = content.replace(/<\/file>$/, '').trim();
+          if (content.length > 0) {
+            files.push({ path: match[1], content });
+          }
+        }
+        setParsedFiles(files);
+        if (files.length > 0 && !selectedFile) {
+          setSelectedFile(files[0].path);
+        }
+
+        // Apply the changes to sandbox
+        try {
+          const applyRes = await fetch('/api/apply-code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ response: updatedCode })
+          });
+          
+          if (applyRes.ok) {
+            toast.success("Code updated and applied!");
+          }
+        } catch (error) {
+          console.error("Failed to apply code:", error);
+          toast.error("Failed to apply code changes");
+        } finally {
+          setIsApplyingCode(false);
+        }
+      } else {
+        toast.success("Response sent!");
+      }
+
+    } catch (error) {
+      toast.error("Failed to process chat message");
+      setCurrentAiMessage("");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const parseAiResponse = (response: string) => {
+    // Extract code blocks (```code```) and separate from text
+    const codeBlockRegex = /```[\s\S]*?```/g;
+    const codeBlocks: string[] = [];
+    let textResponse = response;
+    
+    let match;
+    while ((match = codeBlockRegex.exec(response)) !== null) {
+      codeBlocks.push(match[0]);
+      textResponse = textResponse.replace(match[0], '[Code generated - see Code tab]');
+    }
+    
+    // Also handle <file> tags
+    const fileBlockRegex = /<file path="[^"]+">[\s\S]*?<\/file>/g;
+    while ((match = fileBlockRegex.exec(response)) !== null) {
+      if (!codeBlocks.includes(match[0])) {
+        codeBlocks.push(match[0]);
+        textResponse = textResponse.replace(match[0], '[Code generated - see Code tab]');
+      }
+    }
+    
+    return { textResponse, codeBlocks };
+  };
+
+  const downloadCode = async () => {
+    try {
+      const res = await fetch('/api/create-zip', { method: 'POST' });
+      if (!res.ok) throw new Error("Failed to create zip");
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'project.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Project downloaded!");
+    } catch (error) {
+      toast.error("Failed to download project");
+    }
+  };
+
+  const restart = () => {
+    sessionStorage.removeItem('targetUrl');
+    sessionStorage.removeItem('selectedModel');
+    router.push('/');
+  };
+
+  // Show loading state while checking auth
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-[#f5f3ef] text-[#1a1a1a] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-2 border-[#1a1a1a] border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-[#6b6b6b]">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // If no session after auth check, show redirecting state briefly
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-[#f5f3ef] text-[#1a1a1a] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-2 border-[#1a1a1a] border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-[#6b6b6b]">Redirecting to sign in...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#f5f3ef] text-[#1a1a1a]">
+      {/* Header */}
+      <header className="border-b border-[#1a1a1a]/10 bg-[#faf9f7]/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={restart}>
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+            <div className="h-6 w-px bg-[#1a1a1a]/10" />
+            <div className="flex items-center gap-2.5">
+              <svg width="24" height="24" viewBox="0 0 28 28" fill="none" className="text-[#1a1a1a]">
+                <rect x="2" y="2" width="24" height="24" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+                <circle cx="14" cy="14" r="5" fill="currentColor"/>
+              </svg>
+              <span className="font-display font-semibold">NovaFlow</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs">
+              {isLoading || isGenerating ? (
+                <span className="flex items-center gap-2">
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                  {progress}
+                </span>
+              ) : (
+                <span className="flex items-center gap-2 text-green-600">
+                  <span className="w-2 h-2 rounded-full bg-green-500" />
+                  Ready
+                </span>
+              )}
+            </Badge>
+            <Button size="sm" variant="outline" onClick={downloadCode} disabled={isLoading}>
+              <Download className="w-4 h-4 mr-2" />
+              Export
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex h-[calc(100vh-73px)]">
+        {/* Sidebar */}
+        <aside className="w-80 border-r border-[#1a1a1a]/10 bg-[#faf9f7] flex flex-col">
+          <div className="p-6 border-b border-[#1a1a1a]/10">
+            <p className="text-xs font-medium text-[#8b7355] uppercase tracking-wider mb-2">Project</p>
+            <p className="text-sm font-medium truncate">{targetUrl}</p>
+          </div>
+
+          <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+            <div>
+              <p className="text-xs font-medium text-[#8b7355] uppercase tracking-wider mb-3">Status</p>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm">
+                  <div className={`w-2 h-2 rounded-full ${sandboxUrl ? 'bg-green-500' : 'bg-amber-500'}`} />
+                  <span>Sandbox {sandboxUrl ? 'Ready' : 'Creating...'}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <div className={`w-2 h-2 rounded-full ${generatedCode ? 'bg-green-500' : isGenerating || isApplyingCode ? 'bg-amber-500 animate-pulse' : 'bg-gray-300'}`} />
+                  <span>Code {generatedCode ? 'Generated' : isGenerating || isApplyingCode ? 'Updating...' : 'Pending'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-[#8b7355] uppercase tracking-wider mb-3">Model</p>
+              <p className="text-sm">{selectedModel}</p>
+            </div>
+
+            {progressSteps.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-[#8b7355] uppercase tracking-wider mb-3">Progress</p>
+                <div className="space-y-1.5">
+                  {progressSteps.map((step, i) => (
+                    <div key={i} className="text-xs font-mono text-[#1a1a1a]">
+                      {step}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {progress && (
+              <div className="p-4 bg-[#1a1a1a] text-[#f5f3ef] rounded-sm">
+                <div className="flex items-center gap-2 text-sm">
+                  <Terminal className="w-4 h-4 text-[#8b7355]" />
+                  <span className="font-mono">{progress}</span>
+                </div>
+              </div>
+            )}
+
+            <AsciiAnimation color="#8b7355" />
+          </div>
+
+          <div className="p-6 border-t border-[#1a1a1a]/10 space-y-3">
+            <Button variant="outline" className="w-full" onClick={restart}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Start New Project
+            </Button>
+          </div>
+        </aside>
+
+        {/* Main Content */}
+        <main className="flex-1 flex flex-col bg-[#f5f3ef]">
+          {/* Tabs */}
+          <div className="border-b border-[#1a1a1a]/10 bg-[#faf9f7]">
+            <div className="flex">
+              <button
+                onClick={() => setActiveTab("preview")}
+                className={`px-6 py-4 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${
+                  activeTab === "preview"
+                    ? "border-[#1a1a1a] text-[#1a1a1a]"
+                    : "border-transparent text-[#6b6b6b] hover:text-[#1a1a1a]"
+                }`}
+              >
+                <Eye className="w-4 h-4" />
+                Preview
+              </button>
+              <button
+                onClick={() => setActiveTab("code")}
+                className={`px-6 py-4 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${
+                  activeTab === "code"
+                    ? "border-[#1a1a1a] text-[#1a1a1a]"
+                    : "border-transparent text-[#6b6b6b] hover:text-[#1a1a1a]"
+                }`}
+              >
+                <Code className="w-4 h-4" />
+                Code
+              </button>
+              <button
+                onClick={() => setActiveTab("chat")}
+                className={`px-6 py-4 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${
+                  activeTab === "chat"
+                    ? "border-[#1a1a1a] text-[#1a1a1a]"
+                    : "border-transparent text-[#6b6b6b] hover:text-[#1a1a1a]"
+                }`}
+              >
+                <MessageSquare className="w-4 h-4" />
+                Chat
+                {chatHistory.length > 0 && (
+                  <Badge variant="solid" size="sm" className="ml-1">
+                    {chatHistory.length}
+                  </Badge>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Content Area */}
+          <div className="flex-1 overflow-hidden">
+            {activeTab === "preview" && (
+              <div className="h-full relative">
+                {isLoading ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center space-y-4">
+                      <div className="w-12 h-12 border-4 border-[#8b7355] border-t-transparent rounded-full animate-spin mx-auto" />
+                      <p className="text-[#6b6b6b]">{progress}</p>
+                      <DotPattern className="opacity-20" size={30} color="#8b7355" />
+                    </div>
+                  </div>
+                ) : sandboxUrl ? (
+                  <iframe
+                    src={sandboxUrl}
+                    className="w-full h-full border-0"
+                    title="Website Preview"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-[#6b6b6b]">
+                    Preview will appear here
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "code" && (
+              <div className="h-full flex">
+                {/* File Tree Sidebar */}
+                <div className="w-64 border-r border-[#1a1a1a]/10 bg-[#faf9f7] overflow-y-auto">
+                  <div className="p-4 border-b border-[#1a1a1a]/10">
+                    <p className="text-xs font-medium text-[#8b7355] uppercase tracking-wider">Files</p>
+                    <p className="text-xs text-[#6b6b6b] mt-1">{parsedFiles.length} file(s)</p>
+                  </div>
+                  <div className="p-2">
+                    {parsedFiles.length === 0 ? (
+                      <p className="text-sm text-[#6b6b6b] p-2">No files generated yet</p>
+                    ) : (
+                      parsedFiles.map((file) => (
+                        <button
+                          key={file.path}
+                          onClick={() => setSelectedFile(file.path)}
+                          className={`w-full text-left px-3 py-2 text-sm rounded-sm transition-colors ${
+                            selectedFile === file.path
+                              ? "bg-[#1a1a1a] text-[#f5f3ef]"
+                              : "hover:bg-[#1a1a1a]/5 text-[#1a1a1a]"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Terminal className="w-3.5 h-3.5" />
+                            <span className="truncate">{file.path.split('/').pop()}</span>
+                          </div>
+                          <p className="text-xs opacity-60 truncate mt-0.5">{file.path}</p>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* File Content */}
+                <div className="flex-1 overflow-auto p-6">
+                  {selectedFile && parsedFiles.find(f => f.path === selectedFile) ? (
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <p className="text-sm font-medium text-[#8b7355]">{selectedFile}</p>
+                        <Badge variant="outline" className="text-xs">
+                          {(parsedFiles.find(f => f.path === selectedFile)?.content.length || 0).toLocaleString()} chars
+                        </Badge>
+                      </div>
+                      <pre className="font-mono text-sm bg-[#1a1a1a] text-[#f5f3ef] p-6 rounded-sm overflow-x-auto">
+                        <code>{parsedFiles.find(f => f.path === selectedFile)?.content || ""}</code>
+                      </pre>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-[#6b6b6b]">
+                      {parsedFiles.length === 0 ? (
+                        <div className="text-center">
+                          <Code className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                          <p className="mb-2">No code generated yet</p>
+                          <p className="text-sm">Use the Chat tab to describe what you want to build</p>
+                        </div>
+                      ) : (
+                        <p>Select a file to view its contents</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === "chat" && (
+              <div className="h-full flex flex-col">
+                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                  {chatHistory.length === 0 && !currentAiMessage ? (
+                    <div className="text-center text-[#6b6b6b] py-12">
+                      <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                      <p className="text-lg font-medium mb-2">Create apps with natural language</p>
+                      <p className="text-sm mb-4">Describe what you want to build, and AI will generate the code</p>
+                      <div className="space-y-2 text-left max-w-md mx-auto bg-white border border-[#1a1a1a]/10 p-4 rounded-sm">
+                        <p className="text-xs font-medium text-[#8b7355] uppercase tracking-wider mb-2">Try these:</p>
+                        <p className="text-sm text-[#1a1a1a]">"Create a landing page with a hero section and pricing table"</p>
+                        <p className="text-sm text-[#1a1a1a]">"Add a contact form with validation"</p>
+                        <p className="text-sm text-[#1a1a1a]">"Make the header sticky with a blur effect"</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {chatHistory.map((msg, i) => (
+                        <div
+                          key={i}
+                          className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                        >
+                          <div
+                            className={`max-w-[80%] p-4 rounded-sm ${
+                              msg.role === "user"
+                                ? "bg-[#1a1a1a] text-[#f5f3ef]"
+                                : "bg-white border border-[#1a1a1a]/10"
+                            }`}
+                          >
+                            <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                          </div>
+                        </div>
+                      ))}
+                      {currentAiMessage && (
+                        <div className="flex justify-start">
+                          <div className="max-w-[80%] p-4 rounded-sm bg-white border border-[#1a1a1a]/10">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-2 h-2 bg-[#8b7355] rounded-full animate-pulse" />
+                              <p className="text-xs text-[#6b6b6b]">AI is responding...</p>
+                            </div>
+                            <p className="text-sm whitespace-pre-wrap">{currentAiMessage}</p>
+                          </div>
+                        </div>
+                      )}
+                      {isApplyingCode && (
+                        <div className="flex justify-start">
+                          <div className="max-w-[80%] p-4 rounded-sm bg-[#8b7355]/10 border border-[#8b7355]/20">
+                            <div className="flex items-center gap-2">
+                              <RefreshCw className="w-4 h-4 animate-spin text-[#8b7355]" />
+                              <p className="text-sm text-[#8b7355]">Applying code changes...</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+
+                <div className="p-4 border-t border-[#1a1a1a]/10 bg-[#faf9f7]">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={chatMessage}
+                      onChange={(e) => setChatMessage(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleChat()}
+                      placeholder="Describe what you want to build..."
+                      className="flex-1 px-4 py-3 bg-white border border-[#1a1a1a]/10 rounded-sm text-sm outline-none focus:border-[#1a1a1a]/30"
+                      disabled={isGenerating || isApplyingCode}
+                    />
+                    <Button onClick={handleChat} disabled={isGenerating || isApplyingCode || !chatMessage.trim()}>
+                      {isGenerating ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Send className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
