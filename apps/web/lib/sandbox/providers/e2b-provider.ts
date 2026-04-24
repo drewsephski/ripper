@@ -234,6 +234,36 @@ export class E2BProvider extends SandboxProvider {
     };
   }
 
+  async clearAppDirectory(): Promise<void> {
+    if (!this.sandbox) {
+      throw new Error('No active sandbox');
+    }
+
+    console.log('[E2BProvider] Clearing app directory...');
+    
+    await this.sandbox.runCode(`
+import os
+import shutil
+
+app_dir = '/home/user/app'
+if os.path.exists(app_dir):
+    # Remove all files and directories in app directory
+    for item in os.listdir(app_dir):
+        item_path = os.path.join(app_dir, item)
+        if os.path.isfile(item_path) or os.path.islink(item_path):
+            os.remove(item_path)
+        elif os.path.isdir(item_path):
+            shutil.rmtree(item_path)
+    print('✓ App directory cleared')
+else:
+    os.makedirs(app_dir, exist_ok=True)
+    print('✓ App directory created')
+    `);
+
+    // Clear the existing files tracking
+    this.existingFiles.clear();
+  }
+
   async setupViteApp(): Promise<void> {
     if (!this.sandbox) {
       throw new Error('No active sandbox');

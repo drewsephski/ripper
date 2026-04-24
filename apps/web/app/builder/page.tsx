@@ -64,7 +64,7 @@ export default function BuilderPage() {
   const [sliderStyle, setSliderStyle] = useState({ left: 0, width: 0 });
   
   // File item refs for sliding highlight
-  const fileItemRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const fileItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [fileSliderStyle, setFileSliderStyle] = useState({ top: 0, height: 0, opacity: 0 });
 
   // === CODE EDITING STATE ===
@@ -377,7 +377,7 @@ export default function BuilderPage() {
 
       // If reconnection failed or no sandbox, create new sandbox and apply files
       addChatMessage('Creating new sandbox environment...', 'progress', <Wrench className="w-4 h-4" />);
-      const sandboxData = await createSandbox(true);
+      const sandboxData = await createSandbox(true, true);
 
       if (sandboxData) {
         setSandboxUrl(sandboxData.url);
@@ -395,7 +395,8 @@ export default function BuilderPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             response: filePayload,
-            sandboxId: sandboxData.sandboxId
+            sandboxId: sandboxData.sandboxId,
+            clearBeforeApply: true
           })
         });
 
@@ -478,8 +479,8 @@ export default function BuilderPage() {
       
       addChatMessage('Creating sandbox environment...', 'progress', <Wrench className="w-4 h-4" />);
       
-      // Create sandbox and apply template
-      const sandboxData = await createSandbox(true);
+      // Create sandbox and apply template (force fresh to avoid old file contamination)
+      const sandboxData = await createSandbox(true, true);
       if (sandboxData) {
         addChatMessage('Applying template to sandbox...', 'progress', <Loader2 className="w-4 h-4 animate-spin" />);
         
@@ -493,7 +494,8 @@ export default function BuilderPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             response: filePayload,
-            sandboxId: sandboxData.sandboxId
+            sandboxId: sandboxData.sandboxId,
+            clearBeforeApply: true
           })
         });
         
@@ -902,7 +904,7 @@ export default function BuilderPage() {
     }
   };
 
-  const createSandbox = async (fromGeneration = false) => {
+  const createSandbox = async (fromGeneration = false, forceFresh = false) => {
     if (sandboxCreationRef.current) {
       console.log('[createSandbox] Already in progress, skipping...');
       return null;
@@ -915,7 +917,11 @@ export default function BuilderPage() {
     }
     
     try {
-      const response = await fetch('/api/create-sandbox', { method: 'POST' });
+      const response = await fetch('/api/create-sandbox', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ forceFresh })
+      });
       const data = await response.json();
       
       if (data.success) {
@@ -2088,7 +2094,6 @@ export default function BuilderPage() {
                   Cancel
                 </Button>
                 <Button
-                  variant="solid"
                   onClick={handleDeleteFile}
                   className="bg-red-600 hover:bg-red-700 text-white border-red-600"
                 >

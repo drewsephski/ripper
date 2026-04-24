@@ -14,6 +14,12 @@ interface ParsedFile {
   isTruncated?: boolean;
 }
 
+interface ApplyCodeBody {
+  response?: string;
+  sandboxId?: string;
+  clearBeforeApply?: boolean;
+}
+
 function parseAIResponse(response: string): {
   files: ParsedFile[];
   packages: string[];
@@ -175,9 +181,12 @@ function extractPackagesFromCode(content: string): string[] {
 }
 
 export async function POST(request: NextRequest) {
+  // Keep-alive helper - declared outside try block so it's available in catch blocks
+  let stopKeepAlive = () => {};
+
   try {
     // Safely parse request body
-    let body: { response?: string; sandboxId?: string };
+    let body: ApplyCodeBody;
     try {
       body = await request.json();
     } catch (parseError) {
@@ -188,9 +197,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const { response, sandboxId } = body;
+    const { response, sandboxId, clearBeforeApply } = body;
 
-    console.log('[apply-code] Request received. sandboxId:', sandboxId);
+    console.log('[apply-code] Request received. sandboxId:', sandboxId, 'clearBeforeApply:', clearBeforeApply);
     console.log('[apply-code] global.activeSandboxProvider exists:', !!global.activeSandboxProvider);
     console.log('[apply-code] sandboxManager active sandbox:', sandboxManager.getActiveProvider() ? 'exists' : 'null');
 
@@ -232,6 +241,18 @@ export async function POST(request: NextRequest) {
         success: false,
         error: 'No active sandbox found. Please create a sandbox first.'
       }, { status: 400 });
+    }
+
+    // Clear app directory before applying new files if requested
+    if (clearBeforeApply && typeof (provider as any).clearAppDirectory === 'function') {
+      console.log('[apply-code] Clearing app directory before applying files...');
+      try {
+        await (provider as any).clearAppDirectory();
+        console.log('[apply-code] App directory cleared successfully');
+      } catch (clearError) {
+        console.error('[apply-code] Failed to clear app directory:', clearError);
+        // Continue anyway, as file writes may still work
+      }
     }
 
     // Check if sandbox is still responsive before proceeding
@@ -284,9 +305,6 @@ export async function POST(request: NextRequest) {
         }, { status: 400 });
       }
     }
-
-    // Keep-alive helper - declared early so it's available in catch blocks
-    let stopKeepAlive = () => {};
 
     // Start keep-alive to prevent timeout during long file operations
     console.log('[apply-code] Starting keep-alive for file operations...');

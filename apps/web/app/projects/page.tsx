@@ -328,7 +328,6 @@ export default function ProjectsPage() {
               Cancel
             </Button>
             <Button
-              variant="solid"
               onClick={handleDeleteProject}
               disabled={isDeleting}
               className="bg-red-500 hover:bg-red-600 text-white border-none"

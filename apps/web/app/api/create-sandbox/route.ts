@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { SandboxFactory } from '@/lib/sandbox/factory';
 import type { SandboxState } from '@/lib/sandbox/types';
 import { sandboxManager } from '@/lib/sandbox/sandbox-manager';
@@ -12,7 +12,17 @@ declare global {
   var sandboxCreationPromise: Promise<any> | null;
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  let forceFresh = false;
+  try {
+    const body = await request.json();
+    forceFresh = body.forceFresh === true;
+    
+    console.log('[create-sandbox] Request received. forceFresh:', forceFresh);
+  } catch {
+    // If body parsing fails, continue with default behavior (forceFresh = false)
+  }
+
   // Check if sandbox creation is already in progress
   if (global.sandboxCreationInProgress && global.sandboxCreationPromise) {
     console.log('[create-sandbox] Sandbox creation already in progress, waiting for existing creation...');
@@ -27,7 +37,8 @@ export async function POST() {
   }
 
   // Check if we already have an active sandbox
-  if (global.activeSandboxProvider && global.sandboxData) {
+  // Only reuse if forceFresh is false
+  if (!forceFresh && global.activeSandboxProvider && global.sandboxData) {
     // Verify the sandbox object still exists (synchronous check)
     const isAlive = global.activeSandboxProvider.isAlive();
     if (isAlive) {

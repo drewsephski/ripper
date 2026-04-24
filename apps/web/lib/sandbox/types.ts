@@ -52,6 +52,11 @@ export abstract class SandboxProvider {
   abstract terminate(): Promise<void>;
   abstract isAlive(): boolean;
 
+  async reconnect(sandboxId: string): Promise<boolean> {
+    // Default implementation - providers can override
+    return false;
+  }
+
   async refreshTimeout(): Promise<void> {
     // Default no-op implementation - providers can override
   }

@@ -449,8 +449,8 @@ export default function IndexPage() {
 
                             <Textarea
                               value={prompt}
-                              onChange={(e) => setPrompt(e.target.value)}
-                              onKeyDown={(e) => {
+                              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setPrompt(e.target.value)}
+                              onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
                                 if (e.key === 'Enter' && !e.shiftKey) {
                                   e.preventDefault();
                                   handlePromptSubmit();

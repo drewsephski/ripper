@@ -147,7 +147,7 @@ function extractRoutes(files: Record<string, FileInfo>): RouteInfo[] {
     if (fileInfo.content.includes('<Route') || fileInfo.content.includes('createBrowserRouter')) {
       const routeMatches = fileInfo.content.matchAll(/path=["']([^"']+)["'].*(?:element|component)={([^}]+)}/g);
 
-      for (const match of routeMatches) {
+      for (const match of Array.from(routeMatches)) {
         const [, routePath] = match;
         routes.push({
           path: routePath,

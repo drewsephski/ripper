@@ -164,7 +164,7 @@ export default function TemplatesPage() {
                 variants={fadeInUp}
                 className="group"
                 whileHover={{ y: -8 }}
-                transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
               >
                 <div className="h-full bg-white dark:bg-[#2a2a2a] border-2 border-[#1a1a1a]/10 dark:border-[#8b7355]/20 overflow-hidden hover:border-[#8b7355] dark:hover:border-[#8b7355] transition-all duration-500 shadow-lg hover:shadow-2xl hover:shadow-[#8b7355]/20">
                   {/* Preview Area - larger, more dramatic */}
@@ -190,7 +190,7 @@ export default function TemplatesPage() {
                       <h3 className="font-display font-bold text-xl text-[#1a1a1a] dark:text-[#f5f3ef] tracking-tight">
                         {template.name}
                       </h3>
-                      <Badge variant="secondary" className="text-xs font-bold uppercase tracking-wider">
+                      <Badge className="text-xs font-bold uppercase tracking-wider">
                         {template.category}
                       </Badge>
                     </div>
