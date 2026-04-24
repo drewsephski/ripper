@@ -1,8 +1,10 @@
 import { createAuthClient } from "better-auth/react";
 
+// Type for the auth client (prevents non-portable type inference issues)
+type AuthClient = ReturnType<typeof createAuthClient>;
+
 // Create the auth client with proper configuration for Next.js
-// @ts-ignore - Better Auth types are complex, client works correctly at runtime
-export const authClient = createAuthClient({
+export const authClient: AuthClient = createAuthClient({
   baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
   fetchOptions: {
     credentials: "include",

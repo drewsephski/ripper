@@ -101,7 +101,7 @@ class SandboxManager {
     const now = new Date();
     const toDelete: string[] = [];
 
-    for (const [id, info] of this.sandboxes.entries()) {
+    for (const [id, info] of Array.from(this.sandboxes.entries())) {
       const age = now.getTime() - info.lastAccessed.getTime();
       if (age > maxAge) {
         toDelete.push(id);
