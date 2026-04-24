@@ -8,7 +8,12 @@ import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { X } from "lucide-react";
 
 const Dialog = ReactDialog.Root;
-const DialogTrigger = ReactDialog.Trigger;
+
+const DialogTrigger = React.forwardRef<
+  HTMLButtonElement,
+  React.ComponentPropsWithoutRef<typeof ReactDialog.Trigger>
+>((props, ref) => <ReactDialog.Trigger ref={ref} {...props} />);
+DialogTrigger.displayName = "DialogTrigger";
 
 const overlayVariants = cva(
   ` fixed bg-black/80 font-head

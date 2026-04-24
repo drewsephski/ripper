@@ -123,7 +123,7 @@ async function scrapeWithRetry(
       },
       body: JSON.stringify({
         url,
-        formats: ['markdown', 'html', 'screenshot'],
+        formats: ['markdown', 'html', 'screenshot', 'branding'],
         waitFor: 5000,
         timeout: 45000,
         blockAds: true,
@@ -154,7 +154,7 @@ async function scrapeWithRetry(
       message: 'Analyzing website structure and content...'
     });
 
-    const { markdown, metadata, screenshot, actions, html } = data.data;
+    const { markdown, metadata, screenshot, actions, html, branding } = data.data;
     const screenshotUrl = screenshot || actions?.screenshots?.[0] || null;
     const sanitizedMarkdown = sanitizeQuotes(markdown || '');
     const title = metadata?.title || '';
@@ -191,10 +191,26 @@ async function scrapeWithRetry(
       }
     }
 
+    // Format Firecrawl branding data if available
+    const brandingAnalysis = branding ? `
+Color Scheme: ${branding.colorScheme || 'N/A'}
+Primary Colors: ${branding.colors?.primary || 'N/A'}
+Secondary Colors: ${branding.colors?.secondary || 'N/A'}
+Accent Colors: ${branding.colors?.accent || 'N/A'}
+Background: ${branding.colors?.background || 'N/A'}
+Text Colors: ${branding.colors?.textPrimary || 'N/A'}
+Fonts: ${branding.fonts?.map((f: any) => f.family).join(', ') || 'N/A'}
+Typography Scale: ${JSON.stringify(branding.typography?.fontSizes || {})}
+Spacing: ${JSON.stringify(branding.spacing || {})}
+    `.trim() : 'No branding data available from Firecrawl';
+
     const formattedContent = `
 Title: ${sanitizeQuotes(title)}
 Description: ${sanitizeQuotes(description)}
 URL: ${url}
+
+=== FIRECRAWL BRANDING ANALYSIS ===
+${brandingAnalysis}
 
 === AI VISION DESIGN ANALYSIS ===
 ${visionAnalysis || 'No vision analysis available'}
@@ -222,7 +238,8 @@ ${sanitizedMarkdown}
         description: sanitizeQuotes(description),
         content: sanitizedMarkdown,
         url,
-        screenshot: screenshotUrl
+        screenshot: screenshotUrl,
+        branding: branding || null
       },
       metadata: {
         scraper: 'firecrawl-stream',

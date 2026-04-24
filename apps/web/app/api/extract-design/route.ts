@@ -99,7 +99,34 @@ First, identify the overall design approach:
 - Breakpoint behavior
 - How does layout adapt? (don't just shrink, actually adapt)
 
-Provide this information in a clear, structured format that can be easily parsed and used for code generation. Be as specific and detailed as possible with measurements, color values, and design intent. Focus on what makes this design DISTINCTIVE and MEMORABLE.`;
+=== COMPONENT PATTERN RECOMMENDATIONS ===
+Based on the design analysis above, recommend specific component patterns:
+
+**Header Pattern:**
+- Recommended: [Floating Glass / Asymmetric Bold / Editorial Magazine]
+- Reasoning: Why this pattern fits the design direction
+
+**Hero Pattern:**
+- Recommended: [Split Asymmetric / Typographic Bold / Editorial Magazine / Product Showcase / Minimalist Center]
+- Reasoning: Why this pattern captures the design's essence
+
+**Content Pattern:**
+- Recommended: [Bento Grid / Numbered Features / Editorial Article / Testimonial Cards]
+- Reasoning: How this pattern fits the content structure
+
+**Footer Pattern:**
+- Recommended: [Newsletter / Editorial / Minimal]
+- Reasoning: Why this pattern completes the design
+
+**Design Direction Summary:**
+- Style: [minimal / bold / editorial / playful / luxury / technical]
+- Color Scheme: [light / dark / warm / cool / vibrant]
+- Typography: [serif / sans / mixed / display]
+- Complexity: [simple / moderate / complex]
+
+Provide this information in a clear, structured format that can be easily parsed and used for code generation. Be as specific and detailed as possible with measurements, color values, and design intent. Focus on what makes this design DISTINCTIVE and MEMORABLE.
+
+If the screenshot is incomplete, blurry, or shows minimal content, explicitly state this and recommend the FALLBACK DESIGN SYSTEM approach from the refined minimalism, editorial magazine, bold modern, or soft playful directions.`;
 
 export async function POST(request: NextRequest) {
   try {

@@ -17,6 +17,8 @@ const STREAM_TIMEOUT = 300000; // 5 minutes total stream timeout
 // Model fallback chain - ordered by capability
 const PRIMARY_MODEL: ModelId = 'google/gemini-3.1-flash-lite-preview';
 const MODEL_FALLBACK_CHAIN: ModelId[] = [
+  'tencent/hy3-preview:free',
+  'openrouter/free',
   'deepseek/deepseek-v3.2',
   'qwen/qwen3-coder-next',
 ];
@@ -218,6 +220,193 @@ CRITICAL ANTI-TRUNCATION RULES - YOU MUST COMPLETE ALL FILES:
 - Check your output: Count the </file> tags - there must be exactly 6 closing tags
 - If a file is incomplete, the application will FAIL - users cannot see partial results
 
+## 🎁 SOPHISTICATED COMPONENT LIBRARY - USE THESE PATTERNS
+
+When the screenshot is incomplete, blurry, or content is minimal, use these PREBUILT sophisticated component patterns instead of generic layouts:
+
+### HEADER PATTERNS (Choose based on design direction)
+
+**1. Floating Glass Navigation**
+- Fixed position with backdrop blur
+- Rounded pill-shaped container
+- Smooth scroll-triggered size transitions
+- Elegant hover underline animations
+- Best for: Modern, refined, minimalist sites
+
+**2. Asymmetric Bold Navigation**
+- Asymmetric layout with bold typography
+- Dot separators between nav items
+- Arrow-link CTA with hover animation
+- Best for: Agency, portfolio, bold brands
+
+**3. Editorial Magazine Navigation**
+- Top bar with secondary actions
+- Serif logo with italic styling
+- Wide letter-spacing on nav items
+- Clean horizontal layout
+- Best for: Content sites, magazines, blogs
+
+### HERO PATTERNS (Choose one - NEVER use generic centered text)
+
+**1. Split Asymmetric Hero**
+- Two-column grid with staggered content
+- Large serif typography with italic accents
+- Floating info card overlapping image
+- Warm, earthy color palette
+- Rounded image container
+- Best for: E-commerce, lifestyle, premium brands
+
+**2. Typographic Bold Hero**
+- Full viewport height
+- Dramatic gradient background with blur shapes
+- Extra-large bold text (6xl-9xl)
+- Transparent gradient text effect
+- Stats row at bottom
+- Best for: Agencies, tech companies, bold statements
+
+**3. Editorial Magazine Hero**
+- Category tag with dot indicator
+- Large serif headline with italic emphasis
+- Deck/Subhead paragraph
+- Author metadata line
+- Wide aspect ratio hero image
+- Best for: Publications, blogs, content sites
+
+**4. Product Showcase Hero**
+- Two-column product focus
+- Availability badge (pulse animation)
+- Price with strikethrough discount
+- Trust badges row
+- Floating product image with gradient backdrop
+- Best for: E-commerce, product launches, SaaS
+
+**5. Minimalist Center Hero**
+- Absolute center composition
+- Large light-weight typography
+- Italic accent word
+- Simple two-link navigation
+- Best for: Portfolios, personal sites, studios
+
+### CONTENT PATTERNS
+
+**1. Bento Grid Layout**
+- 3-column asymmetric grid with colorful rounded cards
+- Hover lift effect with shadow
+- "Learn more" reveal on hover
+- Best for: Features, services, capabilities
+
+**2. Numbered Features Layout**
+- Sticky left column with headline
+- Large outlined numbers (01, 02, 03...)
+- Right-aligned content blocks
+- Clean vertical rhythm
+- Best for: Process, methodology, steps
+
+**3. Editorial Article Layout**
+- Drop-cap first letter
+- Generous line-height (leading-relaxed)
+- Pull quote with left border
+- Two-column image grid with offset
+- Best for: Long-form content, stories, blogs
+
+**4. Testimonial Cards**
+- 3-column grid with star ratings (not emojis)
+- Quote text with proper typography
+- Avatar with author info
+- Best for: Social proof, reviews, testimonials
+
+**5. Feature Grid with Icons**
+- 2x2 or 3x3 grid of feature cards
+- Each card has icon, heading, description
+- Subtle hover effects
+- Best for: Product features, benefits
+
+**6. Stats/Social Proof Bar**
+- Horizontal row of key metrics
+- Large numbers with labels
+- Trust indicators, logos
+- Best for: Building credibility
+
+**7. Image+Text Alternating Sections**
+- Zig-zag layout: image left/text right, then reversed
+- Consistent spacing between sections
+- Best for: Detailed feature explanations
+
+**8. Pricing Section**
+- 3-tier card layout
+- Highlighted "recommended" plan
+- Feature lists with checkmarks
+- Best for: SaaS, subscription products
+
+**9. CTA Section**
+- Full-width contrasting background
+- Compelling headline + subhead
+- Single prominent button
+- Best for: Conversion points
+
+**10. Logo Cloud/Trust Bar**
+- Grayscale partner/client logos
+- Evenly spaced row
+- Subtle hover color reveal
+- Best for: Social proof
+
+### FOOTER PATTERNS
+
+**1. Newsletter Footer**
+- Large headline with email capture
+- 4-column link grid
+- Social links row
+- Clean hierarchy
+- Best for: Most business sites
+
+**2. Editorial Footer**
+- Dark background with warm text
+- Serif italic logo
+- Three-column layout
+- Category links with hover effects
+- Best for: Publications, magazines
+
+**3. Minimal Footer**
+- Single row layout
+- Simple nav links
+- Copyright only
+- Best for: Portfolios, minimal sites
+
+## 🆘 FALLBACK DESIGN SYSTEM (When Screenshot Is Insufficient)
+
+If the screenshot is incomplete, blurry, or doesn't show clear design patterns, use this FALLBACK system to create something beautiful:
+
+**Step 1: Choose a Design Direction**
+Analyze what you can see and choose ONE:
+
+- **Refined Minimalism** (business/professional, neutral colors)
+- **Editorial Magazine** (content/lifestyle, warm earth tones)
+- **Bold Modern** (tech/startup, high contrast)
+- **Soft Playful** (consumer/apps, pastel accents)
+
+**Step 2: Apply Sophisticated Defaults**
+- Use the PREBUILT component patterns above
+- Choose distinctive Google Fonts (NEVER Inter/Roboto)
+- Create visual rhythm with varied spacing
+- Add meaningful Framer Motion animations
+
+**Step 3: Quality Check**
+- Would someone believe "AI made this" immediately? If yes, REDO.
+- Does it look like it could be from any template? If yes, REDO.
+- Is there ONE memorable element? If no, add one.
+
+## ⚠️ CRITICAL: AVOID "AI SLOP" OUTPUT
+
+When content is insufficient, DON'T generate:
+- Generic 3-column feature grids with icons
+- Centered everything
+- Gradient text on headings
+- Purple-to-blue gradients
+- Cards inside cards
+- Identical repeating patterns
+
+INSTEAD, use the sophisticated prebuilt patterns above to create something genuinely designed.
+
 DETERMINISTIC CODE GENERATION RULES - PREVENT ERRORS:
 - **Component Structure - ALWAYS follow this pattern**:
   - Import React from 'react'
@@ -312,11 +501,21 @@ DESIGN REQUIREMENTS - EXACT VISUAL REPLICATION:
 - Cards: match card design EXACTLY - shadows, borders, spacing
 - Buttons: match button styles EXACTLY - colors, gradients, hover effects
 
-**Responsive Behavior - EXACT RESPONSIVENESS:**
+**Responsive Behavior - CRITICAL REQUIREMENTS:**
 - Make the clone responsive like the original
 - Use mobile-first approach with appropriate breakpoints
 - Preserve the mobile vs desktop layout differences from the original
 - Match breakpoint behavior EXACTLY as detected
+
+**CRITICAL: NO HORIZONTAL SCROLLING**
+- NEVER use overflow-x-hidden on body - fix the root cause instead
+- Use max-w-full and w-full on all containers
+- Ensure images have max-width: 100% and height: auto
+- Use break-words or overflow-wrap: break-word for long text
+- Grid layouts must use minmax(0, 1fr) or responsive classes
+- Hero sections must stay within viewport - no overflow on mobile
+- Test at 320px width - the site must not scroll horizontally
+- Use responsive padding: px-4 sm:px-6 lg:px-8 not fixed large padding
 
 🚨 CRITICAL OUTPUT FORMAT - YOU MUST FOLLOW THIS EXACTLY:
 
@@ -513,7 +712,50 @@ Match implementation complexity to the aesthetic vision:
 
 Interpret creatively and make unexpected choices that feel genuinely designed for the context. No design should be the same. Vary between light and dark themes, different fonts, different aesthetics. NEVER converge on common choices across generations.
 
-Remember: Create extraordinary creative work. Don't hold back - show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+Remember: Create extraordinary creative work. Don't hold back—show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+
+## 🎁 SOPHISTICATED COMPONENT LIBRARY
+
+For requests involving headers, heroes, content sections, or footers, use these prebuilt patterns:
+
+**HEADER PATTERNS:**
+- Floating Glass Navigation - for modern, refined sites
+- Asymmetric Bold Navigation - for agencies and portfolios
+- Editorial Magazine Navigation - for content sites and blogs
+
+**HERO PATTERNS:**
+- Split Asymmetric Hero - for e-commerce, lifestyle brands
+- Typographic Bold Hero - for tech companies, bold statements
+- Editorial Magazine Hero - for publications, blogs
+- Product Showcase Hero - for e-commerce, product launches
+- Minimalist Center Hero - for portfolios, personal sites
+
+**CONTENT PATTERNS:**
+- Bento Grid Layout - for features, services
+- Numbered Features Layout - for process, methodology
+- Editorial Article Layout - for long-form content
+- Testimonial Cards - for social proof
+- Feature Grid with Icons - for product features
+- Stats/Social Proof Bar - for credibility
+- Image+Text Alternating - for feature explanations
+- Pricing Section - for SaaS/subscriptions
+- CTA Section - for conversion points
+- Logo Cloud/Trust Bar - for social proof
+
+**FOOTER PATTERNS:**
+- Newsletter Footer - for most business sites
+- Editorial Footer - for publications, magazines
+- Minimal Footer - for portfolios, minimal sites
+
+Choose patterns that match the aesthetic direction of the request. NEVER use generic "AI slop" layouts.
+
+**RESPONSIVE DESIGN REQUIREMENTS:**
+- NEVER use overflow-x-hidden on body - fix the root cause
+- Use max-w-full and w-full on all containers
+- Images must have max-width: 100% and height: auto
+- Use responsive padding: px-4 sm:px-6 lg:px-8
+- Hero sections must stay within viewport - no overflow on mobile
+- Test at 320px width - site must not scroll horizontally
 
 When the user asks for code changes or new features:
 
@@ -652,7 +894,7 @@ async function generateWithRetry(
 ): Promise<{ content: string; success: boolean; usedFallback: boolean }> {
   const maxTokens = isFallback ? MAX_TOKENS_FALLBACK : MAX_TOKENS;
   let heartbeatInterval: NodeJS.Timeout | null = null;
-
+  
   try {
     const stream = await openrouter.chat.send({
       chatRequest: {
@@ -784,12 +1026,33 @@ ${scrapedContent}` : ''}`;
           error: 'Scraped content is required for initial generation'
         }, { status: 400 });
       }
+      // Analyze scraped content quality
+      const contentLength = scrapedContent?.length || 0;
+      const hasMinimalContent = contentLength < 500;
+      const hasSufficientStructure = scrapedContent?.includes('header') || scrapedContent?.includes('nav') || scrapedContent?.includes('hero');
+      
+      let fallbackInstruction = '';
+      if (hasMinimalContent || !hasSufficientStructure) {
+        fallbackInstruction = `
+
+⚠️ **IMPORTANT: Limited Source Content Detected**
+The scraped content appears minimal or incomplete. Use the SOPHISTICATED COMPONENT LIBRARY patterns from your instructions:
+
+1. Choose a design direction: Refined Minimalism, Editorial Magazine, Bold Modern, or Soft Playful
+2. Select appropriate prebuilt patterns for Header, Hero, Content, and Footer
+3. Apply distinctive Google Fonts (NEVER Inter/Roboto)
+4. Create something genuinely beautiful with visual rhythm and memorable elements
+
+AVOID generic "AI slop" outputs - use the prebuilt sophisticated patterns instead.`;
+      }
+
       fullPrompt = `${prompt}
 
 Source Website Content:
 ${scrapedContent}
 
 Generate a complete React application that recreates this website. Include all components, styles, and functionality needed for a working single-page application.
+${fallbackInstruction}
 
 REMEMBER: You MUST generate ALL 6 files completely. Check that you have exactly 6 closing </file> tags before finishing.`;
     }

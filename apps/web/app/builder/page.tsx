@@ -444,7 +444,7 @@ export default function BuilderPage() {
       }
       
       // Generate code and stream to code tab
-      addChatMessage('**Analyzing website structure...**\n\nI\'m examining the page layout, identifying key components, and planning the implementation.', 'ai', <Bot className="w-4 h-4" />);
+      addChatMessage("**Planning the perfect design...**\n\nI'm analyzing the website's aesthetic direction, visual hierarchy, and selecting sophisticated component patterns that will create a beautiful, memorable result.", 'ai', <Bot className="w-4 h-4" />);
 
       const generateRes = await fetch('/api/generate-code', {
         method: 'POST',
@@ -462,12 +462,12 @@ export default function BuilderPage() {
       let fullContent = "";
       let lastProgressUpdate = 0;
       const progressMessages = [
-        { threshold: 0.1, message: '**Creating component hierarchy...**\n\nSetting up the main App structure with proper component organization.', icon: <Ruler className="w-4 h-4" /> },
-        { threshold: 0.25, message: '**Building the Hero section...**\n\nCrafting the main visual impact area with responsive design.', icon: <Palette className="w-4 h-4" /> },
-        { threshold: 0.4, message: '**Developing content sections...**\n\nAdding features, about, and other key page sections.', icon: <Puzzle className="w-4 h-4" /> },
-        { threshold: 0.6, message: '**Implementing styling...**\n\nApplying CSS with careful attention to colors, typography, and spacing.', icon: <Sparkles className="w-4 h-4" /> },
-        { threshold: 0.75, message: '**Adding interactivity...**\n\nIncluding animations, hover effects, and user interactions.', icon: <Zap className="w-4 h-4" /> },
-        { threshold: 0.9, message: '**Finalizing implementation...**\n\nPolishing the code and ensuring everything works together smoothly.', icon: <Wrench className="w-4 h-4" /> },
+        { threshold: 0.1, message: '**Analyzing design direction...**\n\nEvaluating the aesthetic approach, color palette, and typography to select the perfect component patterns for this project.', icon: <Ruler className="w-4 h-4" /> },
+        { threshold: 0.25, message: '**Crafting sophisticated navigation...**\n\nBuilding an elegant header with purposeful navigation that sets the tone for the entire experience.', icon: <Palette className="w-4 h-4" /> },
+        { threshold: 0.4, message: '**Designing the hero section...**\n\nCreating a memorable first impression with bold typography, thoughtful composition, and visual impact.', icon: <Puzzle className="w-4 h-4" /> },
+        { threshold: 0.6, message: '**Building content sections...**\n\nAssembling beautifully structured features, testimonials, and content areas with proper visual hierarchy.', icon: <Sparkles className="w-4 h-4" /> },
+        { threshold: 0.75, message: '**Adding polish and motion...**\n\nImplementing smooth animations, hover effects, and micro-interactions that bring the design to life.', icon: <Zap className="w-4 h-4" /> },
+        { threshold: 0.9, message: '**Finalizing and wiring up...**\n\nCompleting the footer, ensuring responsive behavior, and connecting all components into a cohesive whole.', icon: <Wrench className="w-4 h-4" /> },
       ];
 
       while (true) {
@@ -845,7 +845,7 @@ export default function BuilderPage() {
 
           <div className="flex items-center gap-2">
             <AnimatedThemeToggler variant="circle" duration={500} />
-            <Badge variant="outline" className="text-xs dark:border-[#f5f3ef]/20 dark:text-black">
+            <Badge variant="outline" className="text-xs dark:border-[#f5f3ef]/20 dark:text-white">
               {isLoading || isGenerating ? (
                 <span className="flex items-center gap-2">
                   <RefreshCw className="w-3 h-3 animate-spin" />
@@ -1056,7 +1056,7 @@ export default function BuilderPage() {
                             className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
                           >
                             <div
-                              className={`max-w-[85%] relative ${
+                              className={`max-w-[85%] relative transition-opacity duration-200 hover:opacity-90 ${
                                 msg.type === 'user'
                                   ? 'bg-gradient-to-br from-[#1a1a1a] to-[#2d2d2d] dark:from-[#f5f3ef] dark:to-[#e5e2dd] text-[#f5f3ef] dark:text-[#1a1a1a] shadow-lg shadow-black/10'
                                   : msg.type === 'error'
@@ -1095,7 +1095,13 @@ export default function BuilderPage() {
                                   }`}
                                 />
                               ) : (
-                                <p className={`leading-relaxed text-white ${
+                                <p className={`leading-relaxed ${
+                                  msg.type === 'user' 
+                                    ? 'text-[#f5f3ef] dark:text-[#1a1a1a]' 
+                                    : msg.type === 'progress' 
+                                    ? 'text-white' 
+                                    : 'text-[#1a1a1a] dark:text-[#f5f3ef]'
+                                } ${
                                   msg.type === 'progress' ? 'text-[15px]' : 'text-[14px]'
                                 }`}>
                                   {msg.content}
@@ -1131,10 +1137,18 @@ export default function BuilderPage() {
                   </AnimatePresence>
                 </div>
 
-                {/* Pre-filled Prompts */}
-                <div className="px-5 pt-4 pb-2 border-t border-[#e8e6e3] dark:border-[#f5f3ef]/10 bg-[#faf9f7] dark:bg-[#252525] transition-colors duration-300">
+                {/* Pre-filled Prompts - Dynamic based on code state */}
+                <div className="px-5 pt-4 pb-2 border-t border-[#e8e6e3] dark:border-[#f5f3ef]/10 bg-[#f5f3ef] dark:bg-[#1a1a1a] transition-colors duration-300">
                   <div className="flex items-center gap-2 max-w-4xl mx-auto flex-wrap">
-                    {[
+                    {(parsedFiles.length > 0 ? [
+                      { label: "Make it dark mode", full: "Convert this design to a dark mode theme. Use deep charcoal backgrounds (#0f0f0f, #1a1a1a), off-white text (#f5f3ef), and adjust accent colors to be more vibrant against the dark background. Update all cards, sections, and components to work beautifully in dark mode." },
+                      { label: "Make it blue-themed", full: "Transform this design into a blue-themed color scheme. Use deep navy backgrounds (#0a1929, #0d2137), crisp white text, and blue accents (#3b82f6, #60a5fa). Ensure all components, cards, and sections use the blue palette harmoniously." },
+                      { label: "Add animations", full: "Add smooth Framer Motion animations throughout the site. Include fade-in on scroll, staggered entrance for cards and sections, hover scale effects on buttons and cards, and subtle parallax on hero elements. Make the experience feel alive and polished." },
+                      { label: "More minimal", full: "Simplify the design to be ultra-minimal. Reduce the number of sections, increase whitespace significantly, use a more restrained color palette (black, white, one accent), and simplify typography to just one or two font weights. Remove any decorative elements." },
+                      { label: "Add testimonials", full: "Add a testimonials section with 3-4 customer quotes. Include profile images (use placeholder initials or icons), star ratings, company names, and position titles. Use a grid or carousel layout that fits the existing design style." },
+                      { label: "Change fonts", full: "Update the typography to use more distinctive Google Fonts. For headings, use Playfair Display, Cormorant Garamond, or Space Grotesk. For body text, use Source Serif 4, Lora, or Manrope. Ensure the font pairing creates clear visual hierarchy and feels designed, not default." },
+                      { label: "Add pricing", full: "Add a pricing section with 3 pricing tiers (Basic, Pro, Enterprise). Include feature lists, price highlights, and a recommended/Popular badge on the middle tier. Use cards with clear hierarchy and make the CTA buttons prominent." },
+                    ] : [
                       { label: "SaaS Landing Page", full: "Create a modern SaaS startup landing page with a hero section, feature grid, pricing tables, testimonials, and a CTA section. Use a clean, professional design with gradient accents." },
                       { label: "E-commerce Store", full: "Build a sleek e-commerce storefront with a product grid, shopping cart, product detail modal, category filters, and a checkout flow. Include product images, ratings, and pricing." },
                       { label: "Portfolio Website", full: "Design a creative portfolio website for a designer or developer with a hero section, project showcase, about section, skills grid, and contact form. Make it visually striking with bold typography." },
@@ -1142,7 +1156,7 @@ export default function BuilderPage() {
                       { label: "Restaurant Site", full: "Build a restaurant website with a beautiful hero image, menu sections, photo gallery, reservation form, and contact info. Use warm, appetizing colors and elegant typography." },
                       { label: "Blog Platform", full: "Create a modern blog platform with article cards, featured posts, category tags, author profiles, newsletter signup, and a clean reading experience." },
                       { label: "Booking App", full: "Design a booking application for appointments or reservations with a calendar view, time slots, booking form, confirmation screen, and booking management." },
-                    ].map((prompt) => (
+                    ]).map((prompt) => (
                       <button
                         key={prompt.label}
                         onClick={() => setChatMessage(prompt.full)}
@@ -1157,7 +1171,7 @@ export default function BuilderPage() {
 
                 {/* Chat Input */}
                 <motion.div
-                  className="p-5 pt-2 border-t border-[#e8e6e3] dark:border-[#f5f3ef]/10 bg-[#faf9f7] dark:bg-[#252525]"
+                  className="p-5 pt-2 border-t border-[#e8e6e3] dark:border-[#f5f3ef]/10 bg-[#f5f3ef] dark:bg-[#1a1a1a]"
                   initial={false}
                 >
                   <div className="flex items-center gap-3 max-w-4xl mx-auto">
@@ -1194,7 +1208,7 @@ export default function BuilderPage() {
                       }`}
                     >
                       {isGenerating ? (
-                        <RefreshCw className="w-5 h-5 animate-spin" />
+                        <RefreshCw className="w-5 h-5 animate-spin text-white dark:text-[#1a1a1a]" />
                       ) : (
                         <div className="flex items-center gap-2">
                           <span>Send</span>

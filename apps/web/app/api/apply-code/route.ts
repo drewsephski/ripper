@@ -125,19 +125,30 @@ function parseAIResponse(response: string): {
     recovered = true;
   }
 
-  if (files.length === 0) {
+  // Deduplicate files by path (keep last occurrence)
+  const uniqueFiles = new Map<string, ParsedFile>();
+  for (const file of files) {
+    uniqueFiles.set(file.path, file);
+  }
+  const dedupedFiles = Array.from(uniqueFiles.values());
+
+  if (dedupedFiles.length === 0) {
     issues.push('No files could be parsed from the response');
-  } else if (files.length < 4) {
-    issues.push(`Only ${files.length} files found (expected at least 4)`);
+  } else if (dedupedFiles.length < 4) {
+    issues.push(`Only ${dedupedFiles.length} files found (expected at least 4)`);
   }
 
-  const isValid = files.length >= 4 && issues.length === 0;
+  const isValid = dedupedFiles.length >= 4 && issues.filter(i => !i.includes('Unbalanced')).length === 0;
 
-  console.log('[parseAIResponse] Found files:', files.map(f => f.path));
+  if (dedupedFiles.length !== files.length) {
+    console.log(`[parseAIResponse] Deduplicated ${files.length - dedupedFiles.length} duplicate file(s)`);
+  }
+
+  console.log('[parseAIResponse] Found files:', dedupedFiles.map(f => f.path));
   console.log('[parseAIResponse] Found packages:', packages);
   console.log('[parseAIResponse] Validation:', { isValid, issues, recovered });
 
-  return { files, packages, commands, explanation, validation: { isValid, issues, recovered } };
+  return { files: dedupedFiles, packages, commands, explanation, validation: { isValid, issues, recovered } };
 }
 
 function extractPackagesFromCode(content: string): string[] {

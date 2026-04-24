@@ -6,6 +6,7 @@ export const openrouter = new OpenRouter({
 
 // Common models available on OpenRouter
 export const AVAILABLE_MODELS = {
+  "tencent/hy3-preview:free": "Tencent HY3 Preview",
   "google/gemini-3.1-flash-lite-preview": "Gemini 3.1 Flash Lite",
   "qwen/qwen3-coder-next": "Qwen 3 Coder Next",
   "deepseek/deepseek-v3.2": "DeepSeek V3.2",
