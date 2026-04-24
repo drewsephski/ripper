@@ -3,10 +3,6 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-display: var(--font-display);
-    --font-body: var(--font-body);
-    --font-heading: var(--font-display);
-    --font-sans: var(--font-body);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -121,11 +117,48 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground font-body;
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+    overflow-x: visible;
   }
   html {
-    @apply font-body;
+    font-family: var(--font-body);
+    overflow-x: visible;
   }
+}
+
+/* Font utility classes - manually defined to work with next/font/google variables */
+.font-display {
+  font-family: var(--font-display);
+  line-height: 1.05;
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+.font-heading {
+  font-family: var(--font-display);
+  line-height: 1.04;
+}
+
+.font-sans {
+  font-family: var(--font-body);
+}
+
+/* Font toggle overrides */
+html.font-alt .font-display,
+html.font-alt .font-heading,
+html.font-alt [class*="font-display"],
+html.font-alt [class*="font-heading"] {
+  font-family: var(--font-display-alt) !important;
+}
+
+html.font-alt .font-body,
+html.font-alt .font-sans,
+html.font-alt [class*="font-body"],
+html.font-alt [class*="font-sans"] {
+  font-family: var(--font-body-alt) !important;
 }
 
 /* View Transitions for AnimatedThemeToggler */
@@ -138,4 +171,27 @@
 /* Scoped to AnimatedThemeToggler — the toggler sets the data-attribute and the variable only during a theme toggle. */
 html[data-magicui-theme-vt="active"]::view-transition-group(root) {
   animation-duration: var(--magicui-theme-toggle-vt-duration);
+}
+
+/* Custom scrollbar styling with accent color */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #8b7355;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a08060;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }

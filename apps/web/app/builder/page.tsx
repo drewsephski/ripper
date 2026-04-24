@@ -1,23 +1,27 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useLayoutEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/retroui/Button";
 import { Badge } from "@/components/retroui/Badge";
 import { AsciiAnimation } from "@/components/effects";
-import { Send, Download, RefreshCw, ArrowLeft, Code, Eye, Puzzle, MessageSquare, Globe, Zap, Loader2, Camera, Check, X, Wrench, Bot, Ruler, Palette, Sparkles } from "lucide-react";
+import LiquidButton from "@/components/LiquidButton";
+import { Send, Download, RefreshCw, ArrowLeft, Code, Eye, Puzzle, MessageSquare, Globe, Zap, Loader2, Camera, Check, X, Wrench, Bot, Ruler, Palette, Sparkles, Play, AlertTriangle } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { motion, AnimatePresence } from "framer-motion";
 import { AnimatedThemeToggler } from "@/components/AnimatedThemeToggler";
 import { Logo } from "@/components/Logo";
 import TypingIndicator from "@/components/TypingIndicator";
 import { MarkdownMessage } from "@/components/MarkdownMessage";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus, vs } from "react-syntax-highlighter/dist/esm/styles/prism";
+import CodeEditor from "react-simple-code-editor";
 
 // Chat message types
 interface ChatMessage {
   id: string;
-  type: 'user' | 'ai' | 'system' | 'error' | 'progress';
+  type: 'user' | 'ai' | 'system' | 'error' | 'progress' | 'warning';
   content: string;
   timestamp: Date;
   icon?: React.ReactNode;
@@ -51,6 +55,27 @@ export default function BuilderPage() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const codeContainerRef = useRef<HTMLDivElement>(null);
+  const codeEditorRef = useRef<HTMLTextAreaElement>(null);
+  
+  // Tab refs for sliding animation
+  const chatTabRef = useRef<HTMLButtonElement>(null);
+  const previewTabRef = useRef<HTMLButtonElement>(null);
+  const codeTabRef = useRef<HTMLButtonElement>(null);
+  const [sliderStyle, setSliderStyle] = useState({ left: 0, width: 0 });
+  
+  // File item refs for sliding highlight
+  const fileItemRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const [fileSliderStyle, setFileSliderStyle] = useState({ top: 0, height: 0, opacity: 0 });
+
+  // === CODE EDITING STATE ===
+  const [editedContent, setEditedContent] = useState<string>("");
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
+
+  // === DELETE MODAL STATE ===
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [fileToDelete, setFileToDelete] = useState<string | null>(null);
   
   // === VISUAL FEEDBACK STATES ===
   const [urlScreenshot, setUrlScreenshot] = useState<string | null>(null);
@@ -73,6 +98,13 @@ export default function BuilderPage() {
   
   // === GENERATION STARTED REF ===
   const generationStartedRef = useRef<boolean>(false);
+
+  // === WELCOME MESSAGE REF ===
+  const welcomeMessageAddedRef = useRef<boolean>(false);
+
+  // === TEMPLATE STATE ===
+  const [loadedTemplate, setLoadedTemplate] = useState<any>(null);
+  const [templateReadyToRun, setTemplateReadyToRun] = useState(false);
 
 
   // === EFFECTS ===
@@ -112,16 +144,32 @@ export default function BuilderPage() {
     const url = sessionStorage.getItem('targetUrl');
     const model = sessionStorage.getItem('selectedModel') || "google/gemini-3.1-flash-lite-preview";
     const existingProjectId = new URLSearchParams(window.location.search).get('projectId');
+    const startSandbox = new URLSearchParams(window.location.search).get('startSandbox') === 'true';
+    const templateJson = sessionStorage.getItem('selectedTemplate');
     
-    if (!url && !existingProjectId) {
+    if (!url && !existingProjectId && !templateJson) {
       setIsLoading(false);
-      addChatMessage('Welcome! Enter a URL above to start cloning a website, or chat with me to build something new.', 'system');
+      if (!welcomeMessageAddedRef.current) {
+        welcomeMessageAddedRef.current = true;
+        addChatMessage('Welcome! Enter a URL above to start cloning a website, or chat with me to build something new.', 'system');
+      }
       return;
     }
 
     if (existingProjectId) {
       setProjectId(existingProjectId);
-      loadProject(existingProjectId);
+      if (startSandbox) {
+        startProjectSandbox(existingProjectId);
+      } else {
+        loadProject(existingProjectId);
+      }
+      return;
+    }
+
+    if (templateJson && !generationStartedRef.current) {
+      generationStartedRef.current = true;
+      sessionStorage.removeItem('selectedTemplate');
+      loadTemplate(templateJson);
       return;
     }
 
@@ -150,6 +198,64 @@ export default function BuilderPage() {
       });
     }
   }, [generationProgress.streamedCode, generationProgress.isStreaming, activeTab]);
+
+  // Sync edited content when selected file changes
+  useEffect(() => {
+    if (selectedFile) {
+      const file = parsedFiles.find(f => f.path === selectedFile);
+      if (file) {
+        setEditedContent(file.content);
+        setHasUnsavedChanges(false);
+      }
+    }
+  }, [selectedFile, parsedFiles]);
+
+  // Keyboard shortcut for saving (Ctrl+S / Cmd+S)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (hasUnsavedChanges && selectedFile && !isSaving) {
+          handleSaveCode();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [hasUnsavedChanges, selectedFile, isSaving, editedContent]);
+
+  // Update slider position when active tab changes
+  useLayoutEffect(() => {
+    const tabs = {
+      chat: chatTabRef.current,
+      preview: previewTabRef.current,
+      code: codeTabRef.current,
+    };
+    
+    const activeTabElement = tabs[activeTab];
+    if (activeTabElement) {
+      setSliderStyle({
+        left: activeTabElement.offsetLeft,
+        width: activeTabElement.offsetWidth,
+      });
+    }
+  }, [activeTab]);
+
+  // Update file slider position when selected file changes
+  useLayoutEffect(() => {
+    if (selectedFile) {
+      const fileElement = fileItemRefs.current.get(selectedFile);
+      if (fileElement) {
+        setFileSliderStyle({
+          top: fileElement.offsetTop,
+          height: fileElement.offsetHeight,
+          opacity: 1,
+        });
+      }
+    } else {
+      setFileSliderStyle(prev => ({ ...prev, opacity: 0 }));
+    }
+  }, [selectedFile]);
 
   // === HELPERS ===
   
@@ -203,6 +309,268 @@ export default function BuilderPage() {
     } catch (error) {
       toast.error('Failed to load project');
       router.push('/');
+    }
+  };
+
+  const startProjectSandbox = async (id: string) => {
+    try {
+      setIsLoading(true);
+      addChatMessage('Loading project...', 'progress', <Loader2 className="w-4 h-4 animate-spin" />);
+
+      // First load the project data
+      const response = await fetch(`/api/projects/${id}`);
+      if (!response.ok) throw new Error('Failed to load project');
+
+      const data = await response.json();
+      const project = data.project;
+
+      setProjectId(id);
+      setTargetUrl(project.sourceUrl || '');
+
+      // Load files into state
+      if (project.files && project.files.length > 0) {
+        const files = project.files.map((f: any) => ({
+          path: f.path,
+          content: f.content
+        }));
+        setParsedFiles(files);
+        if (files.length > 0) setSelectedFile(files[0].path);
+      }
+
+      // Load conversations
+      if (project.conversations) {
+        setChatHistory(project.conversations.map((c: any) => ({
+          id: Math.random().toString(36).substring(7),
+          type: c.role === 'user' ? 'user' : 'ai',
+          content: c.content,
+          timestamp: new Date(c.createdAt)
+        })));
+      }
+
+      // Try to reconnect to existing sandbox
+      if (project.sandboxId && project.sandboxUrl) {
+        addChatMessage('Reconnecting to existing sandbox...', 'progress', <RefreshCw className="w-4 h-4 animate-spin" />);
+        
+        try {
+          const reconnectRes = await fetch('/api/reconnect-sandbox', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sandboxId: project.sandboxId })
+          });
+
+          if (reconnectRes.ok) {
+            const reconnectData = await reconnectRes.json();
+            if (reconnectData.success) {
+              setSandboxUrl(reconnectData.url);
+              setSandboxHealthy(true);
+              addChatMessage('Reconnected to sandbox! Preview is ready.', 'ai', <Check className="w-4 h-4" />);
+              setActiveTab('preview');
+              setIsLoading(false);
+              toast.success('Project loaded successfully');
+              return;
+            }
+          }
+        } catch (reconnectError) {
+          console.log('Reconnection failed, will create new sandbox');
+        }
+      }
+
+      // If reconnection failed or no sandbox, create new sandbox and apply files
+      addChatMessage('Creating new sandbox environment...', 'progress', <Wrench className="w-4 h-4" />);
+      const sandboxData = await createSandbox(true);
+
+      if (sandboxData) {
+        setSandboxUrl(sandboxData.url);
+        setSandboxHealthy(true);
+
+        // Apply project files to sandbox
+        addChatMessage('Applying project files to sandbox...', 'progress', <Loader2 className="w-4 h-4 animate-spin" />);
+        
+        const filePayload = project.files.map((f: any) => 
+          `<file path="${f.path}">${f.content}</file>`
+        ).join('\n');
+
+        const applyRes = await fetch('/api/apply-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            response: filePayload,
+            sandboxId: sandboxData.sandboxId
+          })
+        });
+
+        if (applyRes.ok) {
+          addChatMessage('Files applied! Restarting Vite server...', 'progress', <Loader2 className="w-4 h-4 animate-spin" />);
+          
+          // Restart Vite server
+          const restartRes = await fetch('/api/restart-vite', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sandboxId: sandboxData.sandboxId })
+          });
+
+          if (restartRes.ok) {
+            addChatMessage('Sandbox ready! Preview is now available.', 'ai', <Check className="w-4 h-4" />);
+            setActiveTab('preview');
+          } else {
+            addChatMessage('Files applied but Vite restart failed. Try refreshing the preview.', 'warning', <AlertTriangle className="w-4 h-4" />);
+            setActiveTab('preview');
+          }
+
+          // Update project with new sandbox info
+          await fetch(`/api/projects/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sandboxId: sandboxData.sandboxId,
+              sandboxUrl: sandboxData.url,
+              status: 'ready',
+            }),
+          });
+        } else {
+          throw new Error('Failed to apply files to sandbox');
+        }
+      }
+
+      setIsLoading(false);
+      toast.success('Project loaded successfully');
+    } catch (error) {
+      console.error('Failed to start project sandbox:', error);
+      toast.error('Failed to load project');
+      setIsLoading(false);
+    }
+  };
+
+  const loadTemplate = async (templateJson: string) => {
+    try {
+      setIsLoading(true);
+      const template = JSON.parse(templateJson);
+      
+      // Convert template files to the format expected by parsedFiles
+      const files = template.files.map((f: any) => ({
+        path: f.path,
+        content: f.content
+      }));
+      
+      setParsedFiles(files);
+      if (files.length > 0) setSelectedFile(files[0].path);
+      
+      // Store template data for later use
+      setLoadedTemplate(template);
+      setTemplateReadyToRun(true);
+      
+      addChatMessage(`Template "${template.name}" loaded! Click "Run App" to render it in the preview.`, 'ai', <Play className="w-4 h-4" />);
+      
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Failed to load template:', error);
+      toast.error('Failed to load template');
+      setIsLoading(false);
+    }
+  };
+
+  const runTemplateApp = async () => {
+    if (!loadedTemplate) return;
+    
+    try {
+      setIsLoading(true);
+      setTemplateReadyToRun(false);
+      
+      addChatMessage('Creating sandbox environment...', 'progress', <Wrench className="w-4 h-4" />);
+      
+      // Create sandbox and apply template
+      const sandboxData = await createSandbox(true);
+      if (sandboxData) {
+        addChatMessage('Applying template to sandbox...', 'progress', <Loader2 className="w-4 h-4 animate-spin" />);
+        
+        // Format files as <file> tags for apply-code API
+        const filePayload = loadedTemplate.files.map((f: any) => 
+          `<file path="${f.path}">${f.content}</file>`
+        ).join('\n');
+        
+        const applyRes = await fetch('/api/apply-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            response: filePayload,
+            sandboxId: sandboxData.sandboxId
+          })
+        });
+        
+        if (applyRes.ok) {
+          addChatMessage('Template applied! Restarting Vite server...', 'progress', <Loader2 className="w-4 h-4 animate-spin" />);
+          
+          // Restart Vite server to pick up the new files
+          const restartRes = await fetch('/api/restart-vite', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sandboxId: sandboxData.sandboxId })
+          });
+          
+          if (restartRes.ok) {
+            addChatMessage('Template applied successfully! Preview is ready.', 'ai', <Check className="w-4 h-4" />);
+            setActiveTab('preview');
+          } else {
+            addChatMessage('Template applied but Vite restart failed. Try refreshing the preview.', 'warning', <AlertTriangle className="w-4 h-4" />);
+            setActiveTab('preview');
+          }
+          
+          // Save as a new project
+          const projectName = loadedTemplate.name;
+          const projectRes = await fetch('/api/projects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: projectName,
+              description: `Created from template: ${loadedTemplate.name}`,
+              style: 'modern',
+            }),
+          });
+          
+          if (projectRes.ok) {
+            const projectData = await projectRes.json();
+            setProjectId(projectData.project.id);
+            
+            const files = loadedTemplate.files.map((f: any) => ({
+              path: f.path,
+              content: f.content
+            }));
+            
+            // Save files to the project
+            for (const file of files) {
+              await fetch(`/api/projects/${projectData.project.id}/files`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  path: file.path,
+                  content: file.content,
+                  language: file.path.endsWith('.jsx') ? 'jsx' : file.path.endsWith('.css') ? 'css' : 'javascript',
+                }),
+              });
+            }
+            
+            // Update project with sandbox info
+            await fetch(`/api/projects/${projectData.project.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sandboxId: sandboxData.sandboxId,
+                sandboxUrl: sandboxData.url,
+                status: 'ready',
+              }),
+            });
+          }
+        } else {
+          throw new Error('Failed to apply template to sandbox');
+        }
+      }
+      
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Failed to run template:', error);
+      toast.error('Failed to run template');
+      setIsLoading(false);
+      setTemplateReadyToRun(true);
     }
   };
 
@@ -286,6 +654,68 @@ export default function BuilderPage() {
     }
   };
 
+  // Save a project generated from a prompt (not URL)
+  const savePromptProject = async (prompt: string, sandboxId: string, sandboxUrl: string, files: {path: string, content: string}[]) => {
+    try {
+      let currentProjectId = projectId;
+      const isNewProject = !currentProjectId;
+
+      // If no project exists, create one
+      if (isNewProject) {
+        // Generate a project name from the prompt (first 50 chars or first sentence)
+        const projectName = prompt.length > 50 ? prompt.slice(0, 50) + '...' : prompt;
+
+        const projectRes = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: projectName,
+            description: `Generated from prompt: ${prompt}`,
+            style: 'modern',
+          }),
+        });
+
+        if (!projectRes.ok) throw new Error('Failed to create project');
+
+        const projectData = await projectRes.json();
+        currentProjectId = projectData.project.id;
+        setProjectId(currentProjectId);
+      }
+
+      // Save/update all files
+      for (const file of files) {
+        await fetch(`/api/projects/${currentProjectId}/files`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            path: file.path,
+            content: file.content,
+            language: file.path.endsWith('.jsx') ? 'jsx' : file.path.endsWith('.css') ? 'css' : 'javascript',
+          }),
+        });
+      }
+
+      // Update project with sandbox info and status
+      await fetch(`/api/projects/${currentProjectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandboxId,
+          sandboxUrl,
+          status: 'ready',
+        }),
+      });
+
+      toast.success(isNewProject ? 'Project saved successfully' : 'Project updated successfully');
+
+      // Return the projectId so callers can use it immediately
+      return currentProjectId;
+    } catch (error) {
+      toast.error('Failed to save project');
+      return null;
+    }
+  };
+
   const saveConversation = async (projectId: string, type: string, content: string) => {
     try {
       await fetch(`/api/projects/${projectId}/conversations`, {
@@ -296,6 +726,138 @@ export default function BuilderPage() {
     } catch (error) {
       console.error('Failed to save conversation:', error);
     }
+  };
+
+  // === CODE EDITING FUNCTIONS ===
+
+  const handleSaveCode = async () => {
+    if (!selectedFile || !projectId || !editedContent.trim()) {
+      toast.error('No file selected or no content to save');
+      return;
+    }
+
+    setIsSaving(true);
+    const saveToastId = toast.loading('Saving changes...');
+
+    try {
+      // 1. Save to database via PUT endpoint
+      const saveRes = await fetch(`/api/projects/${projectId}/files/${encodeURIComponent(selectedFile)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: editedContent,
+          language: selectedFile.endsWith('.jsx') ? 'jsx' : selectedFile.endsWith('.css') ? 'css' : selectedFile.endsWith('.html') ? 'html' : 'javascript',
+        }),
+      });
+
+      if (!saveRes.ok) {
+        throw new Error('Failed to save file to database');
+      }
+
+      // Update local state
+      setParsedFiles(prev => prev.map(f =>
+        f.path === selectedFile ? { ...f, content: editedContent } : f
+      ));
+      setHasUnsavedChanges(false);
+
+      toast.success('Changes saved successfully', { id: saveToastId });
+
+      // 2. Apply to sandbox if healthy
+      if (sandboxHealthy) {
+        setIsApplying(true);
+        const applyToastId = toast.loading('Applying changes to preview...');
+
+        try {
+          // Format as <file> tag for the apply-code API
+          const filePayload = `<file path="${selectedFile}">${editedContent}</file>`;
+
+          const applyRes = await fetch('/api/apply-code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ response: filePayload }),
+          });
+
+          if (applyRes.ok) {
+            toast.success('Preview updated', { id: applyToastId });
+            // Refresh iframe to show changes
+            if (iframeRef.current) {
+              iframeRef.current.src = iframeRef.current.src;
+            }
+          } else {
+            const errorData = await applyRes.json().catch(() => ({ error: 'Unknown error' }));
+            toast.error(`Preview update failed: ${errorData.error || 'Unknown error'}`, { id: applyToastId });
+          }
+        } catch (applyError) {
+          toast.error('Failed to apply changes to preview', { id: applyToastId });
+        } finally {
+          setIsApplying(false);
+        }
+      } else {
+        toast.info('Changes saved but preview not updated - sandbox is not active');
+      }
+    } catch (error) {
+      console.error('Save error:', error);
+      toast.error('Failed to save changes', { id: saveToastId });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCodeChange = (newContent: string) => {
+    setEditedContent(newContent);
+    const originalContent = parsedFiles.find(f => f.path === selectedFile)?.content || '';
+    setHasUnsavedChanges(newContent !== originalContent);
+  };
+
+  const handleDiscardChanges = () => {
+    const originalContent = parsedFiles.find(f => f.path === selectedFile)?.content || '';
+    setEditedContent(originalContent);
+    setHasUnsavedChanges(false);
+    toast.info('Changes discarded');
+  };
+
+  const handleDeleteFile = async () => {
+    if (!fileToDelete || !projectId) return;
+
+    const deleteToastId = toast.loading('Deleting file...');
+
+    try {
+      // Delete from database
+      const deleteRes = await fetch(`/api/projects/${projectId}/files/${encodeURIComponent(fileToDelete)}`, {
+        method: 'DELETE',
+      });
+
+      if (!deleteRes.ok) {
+        throw new Error('Failed to delete file from database');
+      }
+
+      // Update local state
+      setParsedFiles(prev => prev.filter(f => f.path !== fileToDelete));
+
+      // If the deleted file was selected, clear selection
+      if (selectedFile === fileToDelete) {
+        setSelectedFile(null);
+        setEditedContent('');
+        setHasUnsavedChanges(false);
+      }
+
+      toast.success('File deleted successfully', { id: deleteToastId });
+      setDeleteModalOpen(false);
+      setFileToDelete(null);
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast.error('Failed to delete file', { id: deleteToastId });
+    }
+  };
+
+  const openDeleteModal = (filePath: string) => {
+    setFileToDelete(filePath);
+    setDeleteModalOpen(true);
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModalOpen(false);
+    setFileToDelete(null);
   };
 
   // === CORE FUNCTIONS ===
@@ -376,26 +938,36 @@ export default function BuilderPage() {
   };
 
   const startGeneration = async (url: string, model: string) => {
-    if (!url.trim()) return;
+    if (!url.trim()) {
+      toast.error('Please enter a URL to clone');
+      return;
+    }
 
+    // Validate URL format
+    let validatedUrl = url.trim();
+    if (!validatedUrl.startsWith('http://') && !validatedUrl.startsWith('https://')) {
+      validatedUrl = 'https://' + validatedUrl;
+    }
+
+    const cloneToastId = toast.loading(`Starting to clone ${validatedUrl}...`);
     setIsLoading(true);
 
-    // Clear chat and add single static message
+    // Clear chat history for new generation
     setChatHistory([]);
-    const cleanUrl = url.replace(/^https?:\/\//i, '');
-    addChatMessage(`Cloning ${cleanUrl}...`, 'system');
 
     // Start creating sandbox and capturing screenshot in parallel
     // Always create sandbox to ensure provider is registered
     const sandboxPromise = createSandbox(true);
-    captureUrlScreenshot(url, true);
+    captureUrlScreenshot(validatedUrl, true);
 
     try {
       // Wait for sandbox
       const sandboxData = await sandboxPromise;
-      await streamScrapeAndGenerate(url, model, sandboxData);
+      toast.loading('Scraping website and generating code...', { id: cloneToastId });
+      await streamScrapeAndGenerate(validatedUrl, model, sandboxData);
+      toast.success('Website cloned successfully!', { id: cloneToastId });
     } catch (error: any) {
-      toast.error(error.message || 'Failed to generate website');
+      toast.error(error.message || 'Failed to generate website', { id: cloneToastId });
       addChatMessage(`Failed: ${error.message}`, 'error');
       setIsLoading(false);
     } finally {
@@ -605,12 +1177,17 @@ export default function BuilderPage() {
   };
 
   const handleChat = async () => {
-    if (!chatMessage.trim()) return;
+    if (!chatMessage.trim()) {
+      toast.error('Please enter a message');
+      return;
+    }
 
     const userMsg = chatMessage;
     addChatMessage(userMsg, 'user');
     setChatMessage("");
     setIsGenerating(true);
+
+    const chatToastId = toast.loading('Processing your request...');
 
     // Show typing indicator while AI processes
     setTypingStatus("Thinking...");
@@ -686,7 +1263,7 @@ export default function BuilderPage() {
         if (applyRes.ok) {
           const applyData = await applyRes.json();
           addChatMessage(`Code updated and applied! (${applyData.results?.filesCreated?.length || 0} files)`, 'ai', <Check className="w-4 h-4" />);
-          toast.success("Code updated and applied!");
+          toast.success(`Code updated! ${applyData.results?.filesCreated?.length || 0} files created/updated`, { id: chatToastId });
 
           // Use parsed files from API response (more reliable)
           if (applyData.parsedFiles && applyData.parsedFiles.length > 0) {
@@ -717,9 +1294,13 @@ export default function BuilderPage() {
               });
             });
 
-            // Save all files (new and existing) to the project
-            if (projectId && files.length > 0) {
-              saveProjectFiles(files);
+            // Save project (create if new, update if existing)
+            const currentProjectId = await savePromptProject(userMsg, sandboxData.sandboxId, sandboxData.url, files);
+
+            // Save conversation messages now that project exists
+            if (currentProjectId) {
+              await saveConversation(currentProjectId, 'user', userMsg);
+              await saveConversation(currentProjectId, 'assistant', `Code updated and applied! (${applyData.results?.filesCreated?.length || 0} files)`);
             }
 
             setSandboxHealthy(true);
@@ -742,15 +1323,19 @@ export default function BuilderPage() {
             errorMessage = applyRes.statusText || errorMessage;
           }
           addChatMessage(`Failed to apply code: ${errorMessage}`, 'error', <X className="w-4 h-4" />);
-          toast.error("Failed to apply code - sandbox may have timed out");
+          toast.error(`Failed to apply code: ${errorMessage}`, { id: chatToastId });
           setSandboxHealthy(false);
         }
+      } else {
+        // No code blocks, just a text response
+        toast.success('Response received', { id: chatToastId });
       }
 
     } catch (error) {
-      toast.error("Failed to process chat message");
+      toast.error("Failed to process chat message", { id: chatToastId });
     } finally {
       setIsGenerating(false);
+      setIsTyping(false);
     }
   };
 
@@ -777,10 +1362,11 @@ export default function BuilderPage() {
   };
 
   const downloadCode = async () => {
+    const downloadToastId = toast.loading('Preparing download...');
     try {
       const res = await fetch('/api/create-zip', { method: 'POST' });
       if (!res.ok) throw new Error("Failed to create zip");
-      
+
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -790,13 +1376,14 @@ export default function BuilderPage() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success("Project downloaded!");
+      toast.success("Project downloaded successfully!", { id: downloadToastId });
     } catch (error) {
-      toast.error("Failed to download project");
+      toast.error("Failed to download project", { id: downloadToastId });
     }
   };
 
   const restart = () => {
+    toast.info('Starting new project...');
     sessionStorage.removeItem('targetUrl');
     sessionStorage.removeItem('selectedModel');
     router.push('/');
@@ -858,10 +1445,16 @@ export default function BuilderPage() {
                 </span>
               )}
             </Badge>
-            <Button size="sm" variant="outline" onClick={downloadCode} disabled={isLoading || parsedFiles.length === 0} className="dark:border-[#f5f3ef]/20 dark:text-[#f5f3ef] dark:hover:bg-[#f5f3ef]/10">
-              <Download className="w-4 h-4 mr-2" />
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={downloadCode}
+              disabled={isLoading || parsedFiles.length === 0}
+              className="px-3 py-2 text-sm border border-[#1a1a1a]/10 dark:border-[#f5f3ef]/20 text-[#1a1a1a] dark:text-[#f5f3ef] rounded-lg hover:bg-[#1a1a1a]/5 dark:hover:bg-[#f5f3ef]/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
               Export
-            </Button>
+            </motion.button>
           </div>
         </div>
       </header>
@@ -869,13 +1462,18 @@ export default function BuilderPage() {
       {/* Main Content */}
       <div className="flex h-[calc(100vh-73px)]">
         {/* Sidebar */}
-        <aside className="w-80 border-r border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 bg-[#faf9f7] dark:bg-[#252525] flex flex-col transition-colors duration-300">
+        <aside className="w-64 border-r border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 bg-[#faf9f7] dark:bg-[#252525] flex flex-col transition-colors duration-300">
           {/* URL Input */}
-          <div className="p-6 border-b border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10">
-            <p className="text-xs font-medium text-[#8b7355] uppercase tracking-wider mb-3">Clone Website</p>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-[#1a1a1a] border border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 rounded-sm flex-1">
+          <motion.div 
+            className="p-6 border-b border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10"
+            whileHover={{ backgroundColor: "rgba(139, 115, 85, 0.03)" }}
+            transition={{ duration: 0.2 }}
+          >
+            <p className="text-xs font-semibold text-[#8b7355] uppercase tracking-widest mb-4">Clone Website</p>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-[#1a1a1a] border border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 rounded-lg shadow-sm transition-all duration-200 focus-within:border-[#8b7355]/50 focus-within:shadow-md">
                 <Globe className="w-4 h-4 text-[#9b9b9b] dark:text-[#b8b0a8]" />
+                <span className="text-xs text-[#9b9b9b] dark:text-[#6b6b6b]">https://</span>
                 <input
                   type="text"
                   placeholder="example.com"
@@ -885,52 +1483,121 @@ export default function BuilderPage() {
                   className="flex-1 bg-transparent text-sm outline-none text-[#1a1a1a] dark:text-[#f5f3ef] placeholder:text-[#9b9b9b] dark:placeholder:text-[#6b6b6b]"
                 />
               </div>
-              <Button 
-                size="sm" 
+              <LiquidButton
                 onClick={() => startGeneration(targetUrl, selectedModel)}
                 disabled={!targetUrl.trim() || isLoading}
+                isLoading={isLoading}
+                className="w-full"
               >
-                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-              </Button>
+                <Zap className="w-4 h-4" />
+                <span>Clone Website</span>
+              </LiquidButton>
             </div>
-          </div>
+          </motion.div>
 
           {/* Project Info */}
-          <div className="p-6 border-b border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10">
-            <p className="text-xs font-medium text-[#8b7355] uppercase tracking-wider mb-2">Project</p>
-            <p className="text-sm font-medium truncate dark:text-[#f5f3ef]">{targetUrl || 'New Project'}</p>
-          </div>
+          <motion.div 
+            className="px-6 py-5 border-b border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10"
+            whileHover={{ backgroundColor: "rgba(139, 115, 85, 0.03)" }}
+            transition={{ duration: 0.2 }}
+          >
+            <p className="text-xs font-semibold text-[#8b7355] uppercase tracking-widest mb-2">Project</p>
+            <p className="text-base font-medium truncate dark:text-[#f5f3ef]">{targetUrl || 'New Project'}</p>
+          </motion.div>
 
           {/* Status */}
-          <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+          <div className="flex-1 px-6 py-6 space-y-8 overflow-y-auto">
             <div>
-              <p className="text-xs font-medium text-[#8b7355] uppercase tracking-wider mb-3">Status</p>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm dark:text-[#b8b0a8]">
-                  <div className={`w-2 h-2 rounded-full ${sandboxHealthy ? 'bg-green-500' : isLoading ? 'bg-amber-500 animate-pulse' : 'bg-gray-300 dark:bg-gray-600'}`} />
+              <p className="text-xs font-semibold text-[#8b7355] uppercase tracking-widest mb-4">Status</p>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 text-sm dark:text-[#b8b0a8]">
+                  <div className="relative">
+                    {sandboxHealthy && (
+                      <motion.div
+                        className="absolute inset-0 bg-green-500 rounded-full"
+                        animate={{
+                          scale: [1, 1.5, 1],
+                          opacity: [0.5, 0, 0.5],
+                        }}
+                        transition={{
+                          duration: 2,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                        }}
+                      />
+                    )}
+                    <div className={`relative w-2.5 h-2.5 rounded-full ${sandboxHealthy ? 'bg-green-500' : isLoading ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
+                  </div>
                   <span>Sandbox {sandboxHealthy ? 'Ready' : isLoading ? 'Creating...' : 'Not started'}</span>
                 </div>
-                <div className="flex items-center gap-2 text-sm dark:text-[#b8b0a8]">
-                  <div className={`w-2 h-2 rounded-full ${parsedFiles.length > 0 ? 'bg-green-500' : isGenerating ? 'bg-amber-500 animate-pulse' : 'bg-gray-300 dark:bg-gray-600'}`} />
+                <div className="flex items-center gap-3 text-sm dark:text-[#b8b0a8]">
+                  <div className="relative">
+                    {parsedFiles.length > 0 && (
+                      <motion.div
+                        className="absolute inset-0 bg-green-500 rounded-full"
+                        animate={{
+                          scale: [1, 1.5, 1],
+                          opacity: [0.5, 0, 0.5],
+                        }}
+                        transition={{
+                          duration: 2,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                        }}
+                      />
+                    )}
+                    <div className={`relative w-2.5 h-2.5 rounded-full ${parsedFiles.length > 0 ? 'bg-green-500' : isGenerating ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
+                  </div>
                   <span>Code {parsedFiles.length > 0 ? `${parsedFiles.length} files` : isGenerating ? 'Generating...' : 'Not generated'}</span>
                 </div>
               </div>
             </div>
 
             {parsedFiles.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-[#8b7355] uppercase tracking-wider mb-3">Files</p>
-                <div className="space-y-1">
+              <div className="relative">
+                <p className="text-xs font-semibold text-[#8b7355] uppercase tracking-widest mb-4">Files</p>
+                <div className="space-y-1.5 relative">
+                  {/* Sliding highlight for files */}
+                  <motion.div
+                    className="absolute left-0 right-0 bg-[#8b7355]/10 dark:bg-[#8b7355]/20 rounded-lg pointer-events-none"
+                    animate={{
+                      top: fileSliderStyle.top,
+                      height: fileSliderStyle.height,
+                      opacity: fileSliderStyle.opacity,
+                    }}
+                    transition={{
+                      type: "spring",
+                      stiffness: 400,
+                      damping: 28,
+                    }}
+                  />
+                  
                   {parsedFiles.map((file) => (
-                    <button
+                    <div
                       key={file.path}
-                      onClick={() => { setSelectedFile(file.path); setActiveTab('code'); }}
-                      className={`w-full text-left px-2 py-1.5 text-xs rounded transition-colors ${
-                        selectedFile === file.path ? 'bg-[#1a1a1a] dark:bg-[#f5f3ef] text-[#f5f3ef] dark:text-[#1a1a1a]' : 'hover:bg-[#1a1a1a]/5 dark:hover:bg-[#f5f3ef]/10 dark:text-[#b8b0a8]'
-                      }`}
+                      ref={(el) => {
+                        if (el) fileItemRefs.current.set(file.path, el);
+                      }}
+                      className={`flex items-center gap-2 group relative z-10`}
                     >
-                      {file.path.split('/').pop()}
-                    </button>
+                      <button
+                        onClick={() => { setSelectedFile(file.path); setActiveTab('code'); }}
+                        className={`flex-1 text-left px-3 py-2.5 text-sm rounded-lg transition-all duration-200 ${
+                          selectedFile === file.path 
+                            ? 'text-[#1a1a1a] dark:text-[#f5f3ef] font-medium' 
+                            : 'dark:text-[#b8b0a8] hover:text-[#8b7355] dark:hover:text-[#8b7355]'
+                        }`}
+                      >
+                        {file.path.split('/').pop()}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openDeleteModal(file.path); }}
+                        className="px-2.5 py-2.5 text-sm opacity-0 group-hover:opacity-100 transition-all duration-200 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 hover:scale-110"
+                        title="Delete file"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -940,65 +1607,87 @@ export default function BuilderPage() {
           </div>
 
           {/* Actions */}
-          <div className="p-6 border-t border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 space-y-3">
-            <Button variant="outline" className="w-full dark:border-[#f5f3ef]/20 dark:text-[#f5f3ef] dark:hover:bg-[#f5f3ef]/10" onClick={restart}>
-              <RefreshCw className="w-4 h-4 mr-2" />
+          <motion.div 
+            className="p-6 border-t border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10"
+            whileHover={{ backgroundColor: "rgba(139, 115, 85, 0.03)" }}
+            transition={{ duration: 0.2 }}
+          >
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={restart}
+              className="w-full text-sm px-4 py-3 border border-[#1a1a1a]/10 dark:border-[#f5f3ef]/20 text-[#1a1a1a] dark:text-[#f5f3ef] rounded-lg hover:bg-[#1a1a1a]/5 dark:hover:bg-[#f5f3ef]/10 transition-all duration-200 flex items-center justify-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
               Start New Project
-            </Button>
-          </div>
+            </motion.button>
+          </motion.div>
         </aside>
 
         {/* Main Content Area */}
         <main className="flex-1 flex flex-col bg-[#f5f3ef] dark:bg-[#1a1a1a] transition-colors duration-300">
           {/* Tabs */}
-          <div className="border-b border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 bg-[#faf9f7] dark:bg-[#252525] transition-colors duration-300">
-            <div className="flex">
+          <div className="border-b border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 bg-[#faf9f7] dark:bg-[#252525] transition-colors duration-300 relative">
+            <div className="flex px-6 relative">
+              {/* Sliding background */}
+              <motion.div
+                className="absolute bottom-0 h-full bg-[#8b7355]/10 dark:bg-[#8b7355]/20 rounded-lg"
+                animate={{
+                  left: sliderStyle.left,
+                  width: sliderStyle.width,
+                }}
+                transition={{
+                  type: "spring",
+                  stiffness: 500,
+                  damping: 30,
+                }}
+              />
+              
               <button
+                ref={chatTabRef}
                 onClick={() => setActiveTab("chat")}
-                className={`px-6 py-4 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${
+                className={`relative px-5 py-4 text-sm font-medium flex items-center gap-2.5 transition-all duration-200 z-10 ${
                   activeTab === "chat"
-                    ? "border-[#1a1a1a] dark:border-[#f5f3ef] text-[#1a1a1a] dark:text-[#f5f3ef]"
-                    : "border-transparent text-[#6b6b6b] dark:text-[#b8b0a8] hover:text-[#1a1a1a] dark:hover:text-[#f5f3ef]"
+                    ? "text-[#1a1a1a] dark:text-[#f5f3ef]"
+                    : "text-[#6b6b6b] dark:text-[#b8b0a8] hover:text-[#8b7355] dark:hover:text-[#8b7355]"
                 }`}
               >
                 <MessageSquare className="w-4 h-4" />
                 Chat
                 {chatHistory.length > 0 && (
-                  <Badge variant="solid" size="sm" className="ml-1 dark:bg-[#f5f3ef] dark:text-[#1a1a1a]">
+                  <span className="ml-1 px-2 py-0.5 text-xs bg-[#8b7355] text-white rounded-full">
                     {chatHistory.length}
-                  </Badge>
+                  </span>
                 )}
               </button>
               <button
+                ref={previewTabRef}
                 onClick={() => setActiveTab("preview")}
-                className={`px-6 py-4 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${
+                className={`relative px-5 py-4 text-sm font-medium flex items-center gap-2.5 transition-all duration-200 z-10 ${
                   activeTab === "preview"
-                    ? "border-[#1a1a1a] dark:border-[#f5f3ef] text-[#1a1a1a] dark:text-[#f5f3ef]"
-                    : "border-transparent text-[#6b6b6b] dark:text-[#b8b0a8] hover:text-[#1a1a1a] dark:hover:text-[#f5f3ef]"
+                    ? "text-[#1a1a1a] dark:text-[#f5f3ef]"
+                    : "text-[#6b6b6b] dark:text-[#b8b0a8] hover:text-[#8b7355] dark:hover:text-[#8b7355]"
                 }`}
               >
                 <Eye className="w-4 h-4" />
                 Preview
               </button>
               <button
+                ref={codeTabRef}
                 onClick={() => setActiveTab("code")}
-                className={`px-6 py-4 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${
+                className={`relative px-5 py-4 text-sm font-medium flex items-center gap-2.5 transition-all duration-200 z-10 ${
                   activeTab === "code"
-                    ? "border-[#1a1a1a] dark:border-[#f5f3ef] text-[#1a1a1a] dark:text-[#f5f3ef]"
-                    : "border-transparent text-[#6b6b6b] dark:text-[#b8b0a8] hover:text-[#1a1a1a] dark:hover:text-[#f5f3ef]"
+                    ? "text-[#1a1a1a] dark:text-[#f5f3ef]"
+                    : "text-[#6b6b6b] dark:text-[#b8b0a8] hover:text-[#8b7355] dark:hover:text-[#8b7355]"
                 }`}
               >
                 <Code className="w-4 h-4" />
                 Code
                 {generationProgress.isStreaming && (
-                  <Badge
-                    variant="solid"
-                    size="sm"
-                    className="ml-1 bg-amber-500 text-white animate-pulse inline-flex items-center"
-                  >
+                  <span className="ml-1 px-2 py-0.5 text-xs bg-amber-500 text-white rounded-full animate-pulse inline-flex items-center">
                     <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
-                    Streaming
-                  </Badge>
+                    Live
+                  </span>
                 )}
               </button>
             </div>
@@ -1009,17 +1698,6 @@ export default function BuilderPage() {
             {/* Chat Tab */}
             {activeTab === "chat" && (
               <div className="h-full flex flex-col bg-[#f5f3ef] dark:bg-[#1a1a1a] transition-colors duration-300 relative">
-                {/* Screenshot Background */}
-                {urlScreenshot && (
-                  <motion.img
-                    src={urlScreenshot}
-                    alt="Website preview"
-                    className="absolute inset-0 w-full h-full object-cover opacity-20 pointer-events-none"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 0.2 }}
-                    transition={{ duration: 0.5 }}
-                  />
-                )}
                 {/* Messages Area */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-5 relative z-10 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-500">
                   <AnimatePresence mode="popLayout">
@@ -1027,18 +1705,18 @@ export default function BuilderPage() {
                       <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="text-center text-[#6b6b6b] dark:text-[#b8b0a8] py-16"
+                        className="text-center text-[#6b6b6b] dark:text-[#b8b0a8] py-20"
                       >
                         <motion.div
                           initial={{ scale: 0.8, opacity: 0 }}
                           animate={{ scale: 1, opacity: 1 }}
                           transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-                          className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-[#8b7355]/20 to-[#8b7355]/5 rounded-2xl flex items-center justify-center"
+                          className="w-24 h-24 mx-auto mb-8 bg-gradient-to-br from-[#8b7355]/30 to-[#8b7355]/10 rounded-3xl flex items-center justify-center shadow-lg"
                         >
-                          <MessageSquare className="w-10 h-10 text-[#8b7355]" />
+                          <MessageSquare className="w-12 h-12 text-[#8b7355]" />
                         </motion.div>
-                        <p className="text-lg font-medium text-[#1a1a1a] dark:text-[#f5f3ef] mb-2">Ready to build</p>
-                        <p className="text-sm max-w-xs mx-auto">Enter a URL above or type a message to start creating something amazing together.</p>
+                        <h2 className="text-2xl font-semibold text-[#1a1a1a] dark:text-[#f5f3ef] mb-3">Ready to build</h2>
+                        <p className="text-base max-w-md mx-auto leading-relaxed">Enter a URL above to clone a website, or type a message to start creating something new together.</p>
                       </motion.div>
                     ) : (
                       <>
@@ -1056,15 +1734,15 @@ export default function BuilderPage() {
                             className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
                           >
                             <div
-                              className={`max-w-[85%] relative transition-opacity duration-200 hover:opacity-90 ${
+                              className={`max-w-[85%] relative transition-all duration-200 hover:translate-y-[-2px] ${
                                 msg.type === 'user'
-                                  ? 'bg-gradient-to-br from-[#1a1a1a] to-[#2d2d2d] dark:from-[#f5f3ef] dark:to-[#e5e2dd] text-[#f5f3ef] dark:text-[#1a1a1a] shadow-lg shadow-black/10'
+                                  ? 'bg-[#1a1a1a] dark:bg-[#f5f3ef] text-[#f5f3ef] dark:text-[#1a1a1a] shadow-xl shadow-black/20 dark:shadow-black/5'
                                   : msg.type === 'error'
-                                  ? 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800/30'
+                                  ? 'bg-red-50 dark:bg-red-900/30 text-red-900 dark:text-red-200 border-l-4 border-red-500'
                                   : msg.type === 'progress'
-                                  ? 'bg-[#8b7355] dark:bg-[#8b7355] text-white dark:text-white border border-[#8b7355] dark:border-[#8b7355]'
-                                  : 'bg-white/95 dark:bg-[#252525]/95 text-[#1a1a1a] dark:text-[#f5f3ef] border border-[#e8e6e3] dark:border-[#f5f3ef]/10 shadow-sm backdrop-blur-sm'
-                              } rounded-2xl px-5 py-4`}
+                                  ? 'bg-[#8b7355] text-white border-l-4 border-[#6b5344]'
+                                  : 'bg-white dark:bg-[#2a2a2a] text-[#1a1a1a] dark:text-[#f5f3ef] border-l-4 border-[#8b7355] shadow-md'
+                              } rounded-r-xl rounded-l-sm px-6 py-4`}
                             >
                               {/* Icon for messages */}
                               {msg.icon && (
@@ -1073,19 +1751,6 @@ export default function BuilderPage() {
                                 </div>
                               )}
                               
-                              {/* Progress indicator icon */}
-                              {msg.type === 'progress' && (
-                                <div className="flex items-center gap-2 mb-2">
-                                  <motion.div
-                                    animate={{ rotate: 360 }}
-                                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                                    className="w-4 h-4"
-                                  >
-                                    <Sparkles className="w-3 h-3 text-white" />
-                                  </motion.div>
-                                  <span className="text-xs font-medium uppercase tracking-wider text-white">Working</span>
-                                </div>
-                              )}
                               
                               {msg.type === 'ai' ? (
                                 <MarkdownMessage
@@ -1169,9 +1834,44 @@ export default function BuilderPage() {
                   </div>
                 </div>
 
+                {/* Run App Button - shows when template is loaded but not yet rendered */}
+                {templateReadyToRun && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 border-t border-[#e8e6e3] dark:border-[#f5f3ef]/10 bg-[#8b7355]/5 dark:bg-[#8b7355]/10"
+                  >
+                    <div className="flex items-center justify-between max-w-4xl mx-auto">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-[#8b7355] flex items-center justify-center">
+                          <Play className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-[#1a1a1a] dark:text-[#f5f3ef]">Template Ready</p>
+                          <p className="text-sm text-[#6b6b6b] dark:text-[#b8b0a8]">Click to render in preview</p>
+                        </div>
+                      </div>
+                      <Button
+                        onClick={runTemplateApp}
+                        disabled={isLoading}
+                        className="bg-[#8b7355] text-white hover:bg-[#a08060] font-medium px-6"
+                      >
+                        {isLoading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <>
+                            Run App
+                            <Play className="w-4 h-4 ml-2" />
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
+
                 {/* Chat Input */}
                 <motion.div
-                  className="p-5 pt-2 border-t border-[#e8e6e3] dark:border-[#f5f3ef]/10 bg-[#f5f3ef] dark:bg-[#1a1a1a]"
+                  className="p-5 pt-2 border-t border-[#e8e6e3] dark:border-[#f5f3ef]/10 bg-white/90 dark:bg-[#2a2a2a]"
                   initial={false}
                 >
                   <div className="flex items-center gap-3 max-w-4xl mx-auto">
@@ -1244,21 +1944,87 @@ export default function BuilderPage() {
 
             {/* Code Tab */}
             {activeTab === "code" && (
-              <div ref={codeContainerRef} className="h-full overflow-auto p-6">
+              <div ref={codeContainerRef} className="h-full flex flex-col bg-[#f5f3ef] dark:bg-[#1a1a1a]">
                 {selectedFile && parsedFiles.find(f => f.path === selectedFile) ? (
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <p className="text-sm font-medium text-[#8b7355]">{selectedFile}</p>
-                      <Badge variant="outline" className="text-xs">
-                        {(parsedFiles.find(f => f.path === selectedFile)?.content.length || 0).toLocaleString()} chars
-                      </Badge>
+                  <>
+                    {/* Code Header with Actions */}
+                    <div className="flex items-center justify-between px-6 py-3 border-b border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 bg-[#faf9f7] dark:bg-[#252525]">
+                      <div className="flex items-center gap-3">
+                        <p className="text-sm font-medium text-[#8b7355]">{selectedFile}</p>
+                        <Badge variant="outline" className="text-xs text-[#6b6b6b] dark:text-[#b8b0a8]">
+                          {editedContent.length.toLocaleString()} chars
+                        </Badge>
+                        {hasUnsavedChanges && (
+                          <Badge variant="solid" className="text-xs bg-amber-500 text-white">
+                            Unsaved changes
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {hasUnsavedChanges && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleDiscardChanges}
+                            disabled={isSaving || isApplying}
+                            className="text-[#6b6b6b] hover:text-red-600 dark:text-[#b8b0a8] dark:hover:text-red-400"
+                          >
+                            <X className="w-4 h-4 mr-1" />
+                            Discard
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleSaveCode}
+                          disabled={!hasUnsavedChanges || isSaving || isApplying}
+                          className="dark:border-[#f5f3ef]/20 dark:text-[#f5f3ef] dark:hover:bg-[#f5f3ef]/10"
+                        >
+                          {isSaving || isApplying ? (
+                            <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                          ) : (
+                            <Check className="w-4 h-4 mr-1" />
+                          )}
+                          {isSaving ? 'Saving...' : isApplying ? 'Applying...' : 'Save'}
+                          <span className="ml-1 text-xs opacity-60">(Ctrl+S)</span>
+                        </Button>
+                      </div>
                     </div>
-                    <pre className="font-mono text-sm bg-[#1a1a1a] text-[#f5f3ef] p-6 rounded-sm whitespace-pre-wrap break-words">
-                      <code>{parsedFiles.find(f => f.path === selectedFile)?.content || ""}</code>
-                    </pre>
-                  </div>
+
+                    {/* Code Editor */}
+                    <div className="flex-1 p-6 overflow-auto">
+                      <CodeEditor
+                        value={editedContent}
+                        onValueChange={handleCodeChange}
+                        highlight={(code) => (
+                          <SyntaxHighlighter
+                            language="javascript"
+                            style={vscDarkPlus}
+                            customStyle={{
+                              background: 'transparent',
+                              padding: 0,
+                              margin: 0,
+                              fontSize: '0.875rem',
+                              fontFamily: 'monospace',
+                            }}
+                          >
+                            {code}
+                          </SyntaxHighlighter>
+                        )}
+                        padding={24}
+                        style={{
+                          fontFamily: 'monospace',
+                          fontSize: '0.875rem',
+                          backgroundColor: '#1a1a1a',
+                          borderRadius: '0.25rem',
+                          minHeight: '100%',
+                        }}
+                        textareaClassName="outline-none"
+                      />
+                    </div>
+                  </>
                 ) : generationProgress.isStreaming && generationProgress.streamedCode ? (
-                  <div>
+                  <div className="p-6">
                     <div className="flex items-center gap-2 mb-4">
                       <div className="w-2 h-2 bg-[#8b7355] rounded-full animate-pulse" />
                       <p className="text-sm font-medium text-[#8b7355]">Generating...</p>
@@ -1271,7 +2037,7 @@ export default function BuilderPage() {
                   <div className="flex items-center justify-center h-full text-[#6b6b6b]">
                     <div className="text-center">
                       <Code className="w-12 h-12 mx-auto mb-4 opacity-30" />
-                      <p>Select a file from the sidebar to view its contents</p>
+                      <p>Select a file from the sidebar to view and edit its contents</p>
                     </div>
                   </div>
                 )}
@@ -1280,6 +2046,59 @@ export default function BuilderPage() {
           </div>
         </main>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deleteModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={closeDeleteModal}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ type: "spring", duration: 0.2 }}
+              className="bg-[#faf9f7] dark:bg-[#252525] border border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 rounded-xl p-6 max-w-md w-full shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                  <X className="w-5 h-5 text-red-600 dark:text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-[#1a1a1a] dark:text-[#f5f3ef]">Delete File</h3>
+                  <p className="text-sm text-[#6b6b6b] dark:text-[#b8b0a8]">This action cannot be undone</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-[#1a1a1a] dark:text-[#f5f3ef] mb-6">
+                Are you sure you want to delete <span className="font-medium">{fileToDelete?.split('/').pop()}</span>? This will permanently remove the file from your project.
+              </p>
+
+              <div className="flex justify-end gap-3">
+                <Button
+                  variant="ghost"
+                  onClick={closeDeleteModal}
+                  className="dark:text-[#b8b0a8] dark:hover:text-[#f5f3ef]"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="solid"
+                  onClick={handleDeleteFile}
+                  className="bg-red-600 hover:bg-red-700 text-white border-red-600"
+                >
+                  Delete File
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

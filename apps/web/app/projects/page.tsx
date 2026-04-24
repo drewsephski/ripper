@@ -141,8 +141,8 @@ export default function ProjectsPage() {
   };
 
   const handleOpenProject = (id: string) => {
-    // Navigate to builder with project ID
-    router.push(`/builder?projectId=${id}`);
+    // Navigate to builder with project ID and flag to start sandbox
+    router.push(`/builder?projectId=${id}&startSandbox=true`);
   };
 
   const formatDate = (dateString: string) => {

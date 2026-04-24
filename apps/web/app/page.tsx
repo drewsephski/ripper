@@ -9,9 +9,11 @@ import { Popover } from "@/components/retroui/Popover";
 import { Switch } from "@/components/retroui/Switch";
 import { Drawer } from "@/components/retroui/Drawer";
 import { Card } from "@/components/retroui/Card";
+import { Textarea } from "@/components/retroui/Textarea";
 import { AsciiAnimation, Connector, CurvyCorner, GridPattern, DotPattern } from "@/components/effects";
 import { SignUpDialog } from "@/components/auth/SignUpDialog";
 import { AnimatedThemeToggler } from "@/components/AnimatedThemeToggler";
+import { FontToggle } from "@/components/FontToggle";
 import { Logo } from "@/components/Logo";
 import { authClient, useSession, signOut } from "@/lib/auth-client";
 import { useState, useEffect } from "react";
@@ -31,13 +33,21 @@ const techLogosData: TechLogo[] = [
   { title: "TypeScript", url: "https://svgl.app/library/typescript.svg" },
   { title: "Tailwind CSS", url: "https://svgl.app/library/tailwindcss.svg" },
   { title: "Firecrawl", url: "https://svgl.app/library/firecrawl.svg" },
-  { title: "OpenRouter", url: "https://svgl.app/library/openrouter_light.svg" },
+  { title: "OpenRouter", url: "https://svgl.app/library/openrouter_dark.svg" },
   { title: "Better Auth", url: "https://svgl.app/library/better-auth_light.svg" },
   { title: "Headless UI", url: "https://svgl.app/library/headlessui.svg" },
-  { title: "GitHub", url: "https://svgl.app/library/github_light.svg" },
-  { title: "Vercel", url: "https://svgl.app/library/vercel.svg" },
   { title: "Bun", url: "https://svgl.app/library/bun.svg" },
-  { title: "PostCSS", url: "https://svgl.app/library/postcss.svg" }
+];
+
+// Footer logos data
+const footerLogosData: TechLogo[] = [
+  { title: "React", url: "https://svgl.app/library/react_light.svg" },
+  { title: "Tailwind CSS", url: "https://svgl.app/library/tailwindcss.svg" },
+  { title: "Radix UI", url: "https://svgl.app/library/radix-ui_light.svg" },
+  { title: "Better Auth", url: "https://svgl.app/library/better-auth_light.svg" },
+  { title: "TypeScript", url: "https://svgl.app/library/typescript.svg" },
+  { title: "Prisma", url: "https://svgl.app/library/prisma.svg" },
+  { title: "Bun", url: "https://svgl.app/library/bun.svg" }
 ];
 
 // Animation variants
@@ -104,6 +114,8 @@ export default function IndexPage() {
   const [targetUrl, setTargetUrl] = useState("");
   const [selectedModel, setSelectedModel] = useState("openrouter/free");
   const [signUpOpen, setSignUpOpen] = useState(false);
+  const [prompt, setPrompt] = useState("");
+  const [activeTab, setActiveTab] = useState<"prompt" | "url">("prompt");
 
   // Show welcome toast when session is loaded and user is authenticated
   useEffect(() => {
@@ -118,12 +130,28 @@ export default function IndexPage() {
 
 
   const handleStartBuilding = () => {
-    // Store URL in sessionStorage and redirect immediately to builder
-    // The builder will handle auth and start the generation process
-    if (targetUrl.trim()) {
+    // Store URL or prompt in sessionStorage and redirect immediately to builder
+    if (prompt.trim()) {
+      sessionStorage.setItem('buildPrompt', prompt);
+      sessionStorage.setItem('selectedModel', selectedModel);
+    } else if (targetUrl.trim()) {
       sessionStorage.setItem('targetUrl', targetUrl);
       sessionStorage.setItem('selectedModel', selectedModel);
     }
+    router.push('/builder');
+  };
+
+  const handlePromptSubmit = () => {
+    if (prompt.trim()) {
+      sessionStorage.setItem('buildPrompt', prompt);
+      sessionStorage.setItem('selectedModel', selectedModel);
+      router.push('/builder');
+    }
+  };
+
+  const handleQuickPrompt = (quickPrompt: string) => {
+    sessionStorage.setItem('buildPrompt', quickPrompt);
+    sessionStorage.setItem('selectedModel', selectedModel);
     router.push('/builder');
   };
 
@@ -160,7 +188,7 @@ export default function IndexPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f5f3ef] dark:bg-[#1a1a1a] text-[#1a1a1a] dark:text-[#f5f3ef] overflow-x-hidden transition-colors duration-300">
+    <main className="min-h-screen bg-[#f5f3ef] dark:bg-[#1a1a1a] text-[#1a1a1a] dark:text-[#f5f3ef] transition-colors duration-300">
 
       {/* ASCII Animation in corners */}
       <AsciiAnimation className="fixed top-8 left-8 z-10 text-[#1a1a1a] dark:text-[#f5f3ef]" />
@@ -190,9 +218,9 @@ export default function IndexPage() {
                 variant="ghost"
                 size="sm"
                 className="text-sm font-normal text-[#6b6b6b] hover:text-[#8b7355] dark:text-[#b8b0a8] dark:hover:text-[#c9b896]"
-                onClick={() => router.push('/projects')}
+                onClick={() => router.push('/templates')}
               >
-                Projects
+                Templates
               </Button>
             </motion.div>
             <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
@@ -200,47 +228,16 @@ export default function IndexPage() {
                 variant="ghost"
                 size="sm"
                 className="text-sm font-normal text-[#6b6b6b] hover:text-[#8b7355] dark:text-[#b8b0a8] dark:hover:text-[#c9b896]"
-                onClick={() => scrollToSection('pricing')}
+                onClick={() => router.push('/projects')}
               >
-                Pricing
+                Projects
               </Button>
             </motion.div>
-            <Popover>
-              <Popover.Trigger asChild>
-                <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
-                  <Button variant="ghost" size="sm" className="text-sm font-normal text-[#6b6b6b] hover:text-[#8b7355] dark:text-[#b8b0a8] dark:hover:text-[#c9b896]">Docs</Button>
-                </motion.div>
-              </Popover.Trigger>
-              <Popover.Content className="w-56 bg-white dark:bg-[#1a1a1a] border border-[#1a1a1a]/10 dark:border-[#8b7355]/20 shadow-lg" align="end">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-[#1a1a1a] dark:text-[#f5f3ef]">Documentation</p>
-                  <div className="border-t border-[#1a1a1a]/10 dark:border-[#8b7355]/20 pt-2 space-y-1">
-                    <button
-                      onClick={() => scrollToSection('hero')}
-                      className="block w-full text-left text-sm text-[#6b6b6b] hover:text-[#8b7355] dark:text-[#b8b0a8] dark:hover:text-[#c9b896] py-1.5 hover:bg-[#8b7355]/5 dark:hover:bg-[#8b7355]/10 rounded px-2 -ml-2 transition-colors"
-                    >
-                      Quick Start
-                    </button>
-                    <button
-                      onClick={() => scrollToSection('faq')}
-                      className="block w-full text-left text-sm text-[#6b6b6b] hover:text-[#8b7355] dark:text-[#b8b0a8] dark:hover:text-[#c9b896] py-1.5 hover:bg-[#8b7355]/5 dark:hover:bg-[#8b7355]/10 rounded px-2 -ml-2 transition-colors"
-                    >
-                      FAQ
-                    </button>
-                    <button
-                      onClick={() => scrollToSection('features')}
-                      className="block w-full text-left text-sm text-[#6b6b6b] hover:text-[#8b7355] dark:text-[#b8b0a8] dark:hover:text-[#c9b896] py-1.5 hover:bg-[#8b7355]/5 dark:hover:bg-[#8b7355]/10 rounded px-2 -ml-2 transition-colors"
-                    >
-                      Features
-                    </button>
-                  </div>
-                </div>
-              </Popover.Content>
-            </Popover>
           </div>
 
-          {/* Theme Toggle - Desktop */}
-          <div className="hidden md:flex items-center">
+          {/* Theme & Font Toggles - Desktop */}
+          <div className="hidden md:flex items-center gap-1">
+            <FontToggle />
             <AnimatedThemeToggler variant="circle" duration={500} />
           </div>
 
@@ -317,13 +314,6 @@ export default function IndexPage() {
                   >
                     Projects
                   </motion.button>
-                  <motion.button 
-                    className="w-full text-left px-4 py-3 text-sm font-medium text-[#1a1a1a] dark:text-[#f5f3ef] hover:bg-[#8b7355]/5 dark:hover:bg-[#8b7355]/10 rounded-sm border-2 border-transparent hover:border-[#8b7355]/20 dark:hover:border-[#8b7355]/30 transition-all"
-                    onClick={() => scrollToSection('pricing')}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    Pricing
-                  </motion.button>
                   <motion.button
                     className="w-full text-left px-4 py-3 text-sm font-medium text-[#1a1a1a] dark:text-[#f5f3ef] hover:bg-[#8b7355]/5 dark:hover:bg-[#8b7355]/10 rounded-sm border-2 border-transparent hover:border-[#8b7355]/20 dark:hover:border-[#8b7355]/30 transition-all"
                     onClick={() => scrollToSection('faq')}
@@ -334,6 +324,10 @@ export default function IndexPage() {
                   <div className="flex items-center justify-between px-4 py-3 border-t border-[#1a1a1a]/10 dark:border-[#8b7355]/20 mt-2">
                     <span className="text-sm font-medium text-[#1a1a1a] dark:text-[#f5f3ef]">Theme</span>
                     <AnimatedThemeToggler variant="circle" duration={500} />
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-sm font-medium text-[#1a1a1a] dark:text-[#f5f3ef]">Font</span>
+                    <FontToggle showLabel />
                   </div>
                   <div className="pt-4 border-t border-[#1a1a1a]/10 dark:border-[#8b7355]/20 mt-4">
                     <Button className="w-full bg-[#8b7355] hover:bg-[#a08060] text-white border-[#8b7355]" onClick={() => setSignUpOpen(true)}>Start building</Button>
@@ -351,7 +345,7 @@ export default function IndexPage() {
       </nav>
 
       {/* Hero Section - asymmetric, editorial with sophisticated effects */}
-      <section id="hero" className="pt-24 pb-32 lg:pt-32 lg:pb-40 relative overflow-hidden transition-colors duration-300">
+      <section id="hero" className="pt-24 pb-32 lg:pt-32 lg:pb-40 relative transition-colors duration-300">
         {/* Layered background effects */}
         <GridPattern className="opacity-[0.18] dark:opacity-[0.1]" size={48} color="#8b7355" />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#f5f3ef] dark:to-transparent pointer-events-none" />
@@ -363,38 +357,166 @@ export default function IndexPage() {
         <div className="mx-auto max-w-6xl px-6 lg:px-8 relative">
           <div className="grid lg:grid-cols-12 gap-12 lg:gap-10 items-start">
             {/* Left column - main content */}
-            <div className="lg:col-span-7 relative">
+            <div className="lg:col-span-7 relative pb-8">
               
               <div className="relative">
-                <p className="text-sm font-medium text-[#8b7355] mb-6 tracking-wide uppercase">
+                <motion.p
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.1 }}
+                  className="text-sm font-medium text-[#8b7355] mb-6 tracking-wide uppercase"
+                >
                   Ship faster. Build smarter.
-                </p>
-                <h1 className="font-display font-medium text-[clamp(2.75rem,6vw,4.5rem)] leading-[1.05] tracking-[-0.02em] mb-8">
-                  Clone any site. Launch your app in seconds.
-                </h1>
-                
-                {/* Functional URL input */}
-                <div className="relative mb-10 max-w-lg">
-                  <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-[#252525] border-2 border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 rounded-sm focus-within:border-[#8b7355] transition-colors">
-                    <span className="text-[#9b9b9b] dark:text-[#b8b0a8] text-sm">https://</span>
-                    <input
-                      type="text"
-                      value={targetUrl}
-                      onChange={(e) => setTargetUrl(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleStartBuilding()}
-                      placeholder="example.com"
-                      className="flex-1 bg-transparent text-sm outline-none text-[#1a1a1a] dark:text-[#f5f3ef]"
-                    />
-                    <Button size="sm" onClick={handleStartBuilding} disabled={!targetUrl.trim()}>
-                      <ArrowRight className="w-4 h-4" />
-                    </Button>
-                  </div>
-                  <Connector className="absolute -bottom-3 left-1/2 -translate-x-1/2" color="#e5e2dd" />
+                </motion.p>
+                <div className="pb-2">
+                  <motion.h1
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.2 }}
+                    className="font-display font-medium text-[clamp(2.75rem,6vw,4.5rem)] tracking-[-0.02em] mb-6"
+                  >
+                    Describe your landing page.{" "}
+                    <span className="text-[#8b7355]">Watch it build in seconds.</span>
+                  </motion.h1>
                 </div>
-                
-                <p className="font-body text-lg text-[#6b6b6b] dark:text-[#b8b0a8] leading-relaxed mb-10 max-w-lg">
-                  Drop in a URL and watch AI rebuild it as a production-ready React + Tailwind app. Live preview, instant iterations, deploy-ready code.
-                </p>
+
+                {/* Chat Interface with Tab Switcher - moved directly under hero text */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.3 }}
+                  className="relative mb-8"
+                >
+
+                  <Card className="bg-white dark:bg-[#252525] border-2 border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 shadow-lg relative z-10">
+                    {/* Tab Switcher */}
+                    <div className="flex border-b-2 border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10">
+                      <button
+                        onClick={() => setActiveTab("prompt")}
+                        className={`flex-1 px-4 py-3 text-sm font-medium transition-colors relative ${
+                          activeTab === "prompt"
+                            ? "text-[#1a1a1a] dark:text-[#f5f3ef] bg-[#f5f3ef] dark:bg-[#1a1a1a]"
+                            : "text-[#6b6b6b] dark:text-[#b8b0a8] hover:text-[#8b7355] hover:bg-[#f5f3ef]/50 dark:hover:bg-[#1a1a1a]/50"
+                        }`}
+                      >
+                        <span className="flex items-center justify-center gap-2">
+                          <Zap className="w-4 h-4" />
+                          Describe to build
+                        </span>
+                        {activeTab === "prompt" && (
+                          <motion.div
+                            layoutId="activeTab"
+                            className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#8b7355]"
+                          />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("url")}
+                        className={`flex-1 px-4 py-3 text-sm font-medium transition-colors relative ${
+                          activeTab === "url"
+                            ? "text-[#1a1a1a] dark:text-[#f5f3ef] bg-[#f5f3ef] dark:bg-[#1a1a1a]"
+                            : "text-[#6b6b6b] dark:text-[#b8b0a8] hover:text-[#8b7355] hover:bg-[#f5f3ef]/50 dark:hover:bg-[#1a1a1a]/50"
+                        }`}
+                      >
+                        <span className="flex items-center justify-center gap-2">
+                          <Globe className="w-4 h-4" />
+                          Clone from URL
+                        </span>
+                        {activeTab === "url" && (
+                          <motion.div
+                            layoutId="activeTab"
+                            className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#8b7355]"
+                          />
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="p-4">
+                      <AnimatePresence mode="wait">
+                        {activeTab === "prompt" ? (
+                          <motion.div
+                            key="prompt"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 10 }}
+                            transition={{ duration: 0.2 }}
+                            className="space-y-4"
+                          >
+                            <div className="flex items-center gap-2 text-sm text-[#6b6b6b] dark:text-[#b8b0a8]">
+                              <div className="w-2 h-2 rounded-full bg-[#4ade80] animate-pulse" />
+                              <span>AI is ready to build</span>
+                            </div>
+
+                            <Textarea
+                              value={prompt}
+                              onChange={(e) => setPrompt(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handlePromptSubmit();
+                                }
+                              }}
+                              placeholder="I need a SaaS landing page with hero section, pricing cards, testimonials, and a CTA footer..."
+                              className="min-h-[100px] resize-none border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 bg-transparent text-[#1a1a1a] dark:text-[#f5f3ef] placeholder:text-[#9b9b9b] focus:border-[#8b7355] focus:shadow-md transition-all"
+                            />
+
+                            <div className="flex items-center justify-between">
+                              <div className="flex flex-wrap gap-2">
+                                {["SaaS landing page", "Portfolio site", "E-commerce store"].map((quickPrompt) => (
+                                  <button
+                                    key={quickPrompt}
+                                    onClick={() => handleQuickPrompt(`Build me a ${quickPrompt} with modern design, responsive layout, and professional styling`)}
+                                    className="text-xs px-3 py-1.5 bg-[#f5f3ef] dark:bg-[#1a1a1a] text-[#6b6b6b] dark:text-[#b8b0a8] border border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 rounded-sm hover:border-[#8b7355] hover:text-[#8b7355] transition-colors"
+                                  >
+                                    {quickPrompt}
+                                  </button>
+                                ))}
+                              </div>
+
+                              <Button size="sm" onClick={handlePromptSubmit} disabled={!prompt.trim()}>
+                                <ArrowRight className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </motion.div>
+                        ) : (
+                          <motion.div
+                            key="url"
+                            initial={{ opacity: 0, x: 10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -10 }}
+                            transition={{ duration: 0.2 }}
+                            className="space-y-4"
+                          >
+                            <div className="flex items-center gap-2 text-sm text-[#6b6b6b] dark:text-[#b8b0a8]">
+                              <div className="w-2 h-2 rounded-full bg-[#8b7355] animate-pulse" />
+                              <span>Firecrawl will scrape and rebuild</span>
+                            </div>
+
+                            <div className="flex items-center gap-3 px-4 py-3 bg-[#f5f3ef] dark:bg-[#1a1a1a] border-2 border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 rounded-sm focus-within:border-[#8b7355] transition-colors">
+                              <span className="text-[#9b9b9b] dark:text-[#b8b0a8] text-sm">https://</span>
+                              <input
+                                type="text"
+                                value={targetUrl}
+                                onChange={(e) => setTargetUrl(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleStartBuilding()}
+                                placeholder="example.com"
+                                className="flex-1 bg-transparent text-sm outline-none text-[#1a1a1a] dark:text-[#f5f3ef]"
+                              />
+                              <Button size="sm" onClick={handleStartBuilding} disabled={!targetUrl.trim()}>
+                                <ArrowRight className="w-4 h-4" />
+                              </Button>
+                            </div>
+
+                            <p className="text-xs text-[#6b6b6b] dark:text-[#b8b0a8]">
+                              Paste any website URL and we'll clone its design, structure, and content as a React app.
+                            </p>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </Card>
+                </motion.div>
+
                 <div className="flex flex-wrap gap-4">
                   <Button size="lg" className="font-medium px-8" onClick={handleStartBuilding}>
                     Start building free
@@ -672,6 +794,7 @@ export default function IndexPage() {
       </motion.div>
     </Dialog.Content>
   </Dialog>
+
                 </div>
               </div>
             </div>
@@ -691,8 +814,8 @@ export default function IndexPage() {
                 <div className="flex gap-4 items-start group">
                   <div className="w-8 h-8 bg-[#1a1a1a] dark:bg-[#f5f3ef] text-[#f5f3ef] dark:text-[#1a1a1a] flex items-center justify-center text-sm font-medium shrink-0 transition-transform group-hover:scale-105">1</div>
                   <div>
-                    <p className="font-medium text-sm dark:text-[#f5f3ef]">Paste any URL</p>
-                    <p className="text-sm text-[#6b6b6b] dark:text-[#b8b0a8] leading-relaxed">Firecrawl scrapes the full page content, structure, and screenshot.</p>
+                    <p className="font-medium text-sm dark:text-[#f5f3ef]">Describe what you want</p>
+                    <p className="text-sm text-[#6b6b6b] dark:text-[#b8b0a8] leading-relaxed">Type your vision—AI understands layout, components, and styling needs.</p>
                   </div>
                 </div>
                 
@@ -736,6 +859,16 @@ export default function IndexPage() {
                     ))}
                   </div>
                 </div>
+
+                {/* Description text at bottom right */}
+                <motion.p
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.5 }}
+                  className="font-body text-sm text-[#6b6b6b] dark:text-[#b8b0a8] leading-relaxed pt-4 border-t border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10"
+                >
+                  Describe what you need or paste a URL. AI generates production-ready React + Tailwind code with live preview and instant iterations.
+                </motion.p>
               </div>
             </div>
           </div>
@@ -1127,7 +1260,7 @@ export default function IndexPage() {
 
         <div className="mx-auto max-w-4xl px-6 lg:px-8 text-center relative">
           <p className="text-sm font-medium text-[#8b7355] mb-6 tracking-wide uppercase">Start building</p>
-          <h2 className="font-display font-medium text-[clamp(2rem,5vw,3.5rem)] leading-[1.1] tracking-[-0.02em] mb-6 dark:text-[#f5f3ef]">
+          <h2 className="font-display font-medium text-[clamp(2rem,5vw,2.5rem)] leading-[1.1] tracking-[-0.02em] mb-6 dark:text-[#f5f3ef]">
             Your first app is 60 seconds away.
           </h2>
           <p className="font-body text-lg text-[#6b6b6b] dark:text-[#b8b0a8] leading-relaxed mb-10 max-w-xl mx-auto">
@@ -1145,74 +1278,52 @@ export default function IndexPage() {
         </div>
       </section>
 
-      {/* Footer - compact, single row on desktop with connector accents */}
-      <footer className="py-12 border-t border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 relative transition-colors duration-300">
+      {/* Footer */}
+      <footer className="py-16 border-t border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 relative transition-colors duration-300 bg-[#8b7355]/30">
         <AsciiAnimation className="absolute right-8 top-4 hidden lg:block text-[#1a1a1a] dark:text-[#f5f3ef]" />
         <Connector className="-top-[11px] left-1/4" color="#e5e2dd" />
         <div className="mx-auto max-w-6xl px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-8">
-            <div className="flex items-center gap-2">
-              <svg width="20" height="20" viewBox="0 0 28 28" fill="none" className="text-[#1a1a1a] dark:text-[#f5f3ef]">
-                <rect x="2" y="2" width="24" height="24" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-                <circle cx="14" cy="14" r="5" fill="currentColor"/>
-              </svg>
-              <span className="font-display font-medium text-sm dark:text-[#f5f3ef]">NovaFlow</span>
-            </div>
-
-            <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-[#6b6b6b] dark:text-[#b8b0a8]">
-              <a href="#" className="hover:text-[#1a1a1a] dark:hover:text-[#f5f3ef] transition-colors">Features</a>
-              <a href="#" className="hover:text-[#1a1a1a] dark:hover:text-[#f5f3ef] transition-colors">Pricing</a>
-              <a href="#" className="hover:text-[#1a1a1a] dark:hover:text-[#f5f3ef] transition-colors">Changelog</a>
-              <a href="#" className="hover:text-[#1a1a1a] dark:hover:text-[#f5f3ef] transition-colors">Privacy</a>
-              <a href="#" className="hover:text-[#1a1a1a] dark:hover:text-[#f5f3ef] transition-colors">Terms</a>
-            </nav>
-
-            <div className="flex gap-4 text-sm text-[#6b6b6b] dark:text-[#b8b0a8]">
-              <a href="#" className="hover:text-[#1a1a1a] dark:hover:text-[#f5f3ef] transition-colors">Twitter</a>
-              <a href="#" className="hover:text-[#1a1a1a] dark:hover:text-[#f5f3ef] transition-colors">GitHub</a>
-            </div>
+          {/* Brand row */}
+          <div className="flex items-center gap-3 mb-12">
+            <svg width="24" height="24" viewBox="0 0 28 28" fill="none" className="text-[#1a1a1a] dark:text-[#f5f3ef]">
+              <rect x="2" y="2" width="24" height="24" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+              <circle cx="14" cy="14" r="5" fill="currentColor"/>
+            </svg>
+            <span className="font-display font-medium text-base text-[#1a1a1a] dark:text-[#f5f3ef]">NovaFlow</span>
           </div>
 
           {/* Built With Section */}
-          <div className="mt-10 pt-8 border-t border-[#1a1a1a]/5 dark:border-[#f5f3ef]/5">
-            <p className="text-xs font-medium text-[#8b7355] uppercase tracking-wider mb-4">Built With</p>
-            <div className="flex flex-wrap gap-4">
-              <a href="https://nextjs.org" target="_blank" rel="noopener noreferrer" className="group">
-                <img src="https://svgl.app/library/nextjs_icon_dark.svg" alt="Next.js" className="h-5 w-auto opacity-60 group-hover:opacity-100 transition-opacity" />
-              </a>
-              <a href="https://react.dev" target="_blank" rel="noopener noreferrer" className="group">
-                <img src="https://svgl.app/library/react_light.svg" alt="React" className="h-5 w-auto opacity-60 group-hover:opacity-100 transition-opacity" />
-              </a>
-              <a href="https://tailwindcss.com" target="_blank" rel="noopener noreferrer" className="group">
-                <img src="https://svgl.app/library/tailwindcss.svg" alt="Tailwind CSS" className="h-5 w-auto opacity-60 group-hover:opacity-100 transition-opacity" />
-              </a>
-              <a href="https://www.radix-ui.com" target="_blank" rel="noopener noreferrer" className="group">
-                <img src="https://svgl.app/library/radix-ui_light.svg" alt="Radix UI" className="h-5 w-auto opacity-60 group-hover:opacity-100 transition-opacity" />
-              </a>
-              <a href="https://www.better-auth.com" target="_blank" rel="noopener noreferrer" className="group">
-                <img src="https://svgl.app/library/better-auth_light.svg" alt="Better Auth" className="h-5 w-auto opacity-60 group-hover:opacity-100 transition-opacity" />
-              </a>
-              <a href="https://motion.dev" target="_blank" rel="noopener noreferrer" className="group">
-                <img src="https://svgl.app/library/motion.svg" alt="Framer Motion" className="h-5 w-auto opacity-60 group-hover:opacity-100 transition-opacity" />
-              </a>
-              <a href="https://www.typescriptlang.org" target="_blank" rel="noopener noreferrer" className="group">
-                <img src="https://svgl.app/library/typescript.svg" alt="TypeScript" className="h-5 w-auto opacity-60 group-hover:opacity-100 transition-opacity" />
-              </a>
-              <a href="https://prisma.io" target="_blank" rel="noopener noreferrer" className="group">
-                <img src="https://svgl.app/library/prisma.svg" alt="Prisma" className="h-5 w-auto opacity-60 group-hover:opacity-100 transition-opacity" />
-              </a>
-              <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="group">
-                <img src="https://svgl.app/library/openrouter_light.svg" alt="OpenRouter" className="h-5 w-auto opacity-60 group-hover:opacity-100 transition-opacity" />
-              </a>
-              <a href="https://bun.sh" target="_blank" rel="noopener noreferrer" className="group">
-                <img src="https://svgl.app/library/bun.svg" alt="Bun" className="h-5 w-auto opacity-60 group-hover:opacity-100 transition-opacity" />
-              </a>
+          <div className="mb-12">
+            <p className="text-xs font-semibold text-[#8b7355] uppercase tracking-widest mb-6">Built With</p>
+            <div className="flex flex-wrap justify-center gap-4 lg:gap-6 items-center">
+              <Tooltip.Provider delayDuration={100}>
+                {footerLogosData.map((logo) => (
+                  <Tooltip key={logo.title}>
+                    <Tooltip.Trigger asChild>
+                      <div className="flex items-center justify-center w-14 h-14 rounded-lg bg-[#8b7355]/10 dark:bg-[#8b7355]/20 hover:bg-[#8b7355]/20 dark:hover:bg-[#8b7355]/30 transition-colors duration-300 cursor-pointer">
+                        <img
+                          src={logo.url}
+                          alt={logo.title}
+                          className="h-6 w-auto"
+                          loading="lazy"
+                        />
+                      </div>
+                    </Tooltip.Trigger>
+                    <Tooltip.Content variant="solid">
+                      <p className="font-body text-xs">{logo.title}</p>
+                    </Tooltip.Content>
+                  </Tooltip>
+                ))}
+              </Tooltip.Provider>
             </div>
           </div>
 
-          <p className="text-xs text-[#9b9b9b] dark:text-[#b8b0a8] mt-8">
-            © 2026 NovaFlow. All rights reserved.
-          </p>
+          {/* Copyright */}
+          <div className="pt-8 border-t border-[#1a1a1a]/5 dark:border-[#f5f3ef]/5">
+            <p className="text-xs text-[#9b9b9b] dark:text-[#b8b0a8]">
+              © 2026 NovaFlow. All rights reserved.
+            </p>
+          </div>
         </div>
       </footer>
 
