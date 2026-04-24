@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sandboxManager } from '@/lib/sandbox/sandbox-manager';
 
+declare global {
+  var activeSandboxProvider: any;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -9,6 +13,10 @@ export async function POST(request: NextRequest) {
     console.log('[restart-vite] Request received. sandboxId:', sandboxId);
 
     let provider = sandboxId ? sandboxManager.getProvider(sandboxId) : sandboxManager.getActiveProvider();
+
+    if (!provider) {
+      provider = global.activeSandboxProvider;
+    }
 
     if (!provider) {
       console.error('[restart-vite] No active sandbox found');

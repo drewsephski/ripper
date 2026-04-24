@@ -7,7 +7,7 @@ import { Button } from "@/components/retroui/Button";
 import { Badge } from "@/components/retroui/Badge";
 import { AsciiAnimation } from "@/components/effects";
 import LiquidButton from "@/components/LiquidButton";
-import { Send, Download, RefreshCw, ArrowLeft, Code, Eye, Puzzle, MessageSquare, Globe, Zap, Loader2, Camera, Check, X, Wrench, Bot, Ruler, Palette, Sparkles, Play, AlertTriangle } from "lucide-react";
+import { Send, Download, RefreshCw, ArrowLeft, Code, Eye, Puzzle, MessageSquare, Globe, Zap, Loader2, Camera, Check, X, Wrench, Bot, Ruler, Palette, Sparkles, Play, AlertTriangle, AlertCircle, ArrowRight, Copy, ExternalLink, Package, Rocket, Save } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { motion, AnimatePresence } from "framer-motion";
 import { AnimatedThemeToggler } from "@/components/AnimatedThemeToggler";
@@ -105,6 +105,12 @@ export default function BuilderPage() {
   // === TEMPLATE STATE ===
   const [loadedTemplate, setLoadedTemplate] = useState<any>(null);
   const [templateReadyToRun, setTemplateReadyToRun] = useState(false);
+
+  // === DEPLOYMENT STATE ===
+  const [deployUrl, setDeployUrl] = useState<string | null>(null);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [deployDropdownOpen, setDeployDropdownOpen] = useState(false);
+  const deployDropdownRef = useRef<HTMLDivElement>(null);
 
 
   // === EFFECTS ===
@@ -224,6 +230,17 @@ export default function BuilderPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [hasUnsavedChanges, selectedFile, isSaving, editedContent]);
 
+  // Close deploy dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (deployDropdownRef.current && !deployDropdownRef.current.contains(e.target as Node)) {
+        setDeployDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Update slider position when active tab changes
   useLayoutEffect(() => {
     const tabs = {
@@ -285,6 +302,7 @@ export default function BuilderPage() {
 
       setTargetUrl(project.sourceUrl || '');
       setSandboxUrl(project.sandboxUrl || '');
+      setDeployUrl(project.deployUrl || null);
       
       if (project.conversations) {
         setChatHistory(project.conversations.map((c: any) => ({
@@ -326,6 +344,7 @@ export default function BuilderPage() {
 
       setProjectId(id);
       setTargetUrl(project.sourceUrl || '');
+      setDeployUrl(project.deployUrl || null);
 
       // Load files into state
       if (project.files && project.files.length > 0) {
@@ -1154,6 +1173,23 @@ export default function BuilderPage() {
         const successMessage = `Done! Generated ${files.length} files. Chat with me to make changes.`;
         addChatMessage(successMessage, 'ai', <Check className="w-4 h-4" />);
 
+        // Restart Vite server to pick up the new files
+        addChatMessage('Restarting Vite server...', 'progress', <RefreshCw className="w-4 h-4 animate-spin" />);
+        try {
+          const restartRes = await fetch('/api/restart-vite', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sandboxId: sandboxData?.sandboxId })
+          });
+
+          if (!restartRes.ok) {
+            console.warn('[startGeneration] Vite restart failed:', await restartRes.text());
+            addChatMessage('Files applied but Vite restart failed. Try refreshing the preview.', 'warning', <AlertTriangle className="w-4 h-4" />);
+          }
+        } catch (restartError) {
+          console.warn('[startGeneration] Vite restart error:', restartError);
+        }
+
         // Save project and get the projectId
         let currentProjectId = projectId;
         if (sandboxData) {
@@ -1271,6 +1307,23 @@ export default function BuilderPage() {
           addChatMessage(`Code updated and applied! (${applyData.results?.filesCreated?.length || 0} files)`, 'ai', <Check className="w-4 h-4" />);
           toast.success(`Code updated! ${applyData.results?.filesCreated?.length || 0} files created/updated`, { id: chatToastId });
 
+          // Restart Vite server to pick up the new files
+          addChatMessage('Restarting Vite server...', 'progress', <RefreshCw className="w-4 h-4 animate-spin" />);
+          try {
+            const restartRes = await fetch('/api/restart-vite', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sandboxId: sandboxData.sandboxId })
+            });
+
+            if (!restartRes.ok) {
+              console.warn('[handleChat] Vite restart failed:', await restartRes.text());
+              addChatMessage('Files applied but Vite restart failed. Try refreshing the preview.', 'warning', <AlertTriangle className="w-4 h-4" />);
+            }
+          } catch (restartError) {
+            console.warn('[handleChat] Vite restart error:', restartError);
+          }
+
           // Use parsed files from API response (more reliable)
           if (applyData.parsedFiles && applyData.parsedFiles.length > 0) {
             const files = applyData.parsedFiles.map((f: {path: string, length?: number}) => {
@@ -1349,21 +1402,37 @@ export default function BuilderPage() {
     const codeBlockRegex = /\`\`\`[\s\S]*?\`\`\`/g;
     const codeBlocks: string[] = [];
     let textResponse = response;
-    
+
     let match;
     while ((match = codeBlockRegex.exec(response)) !== null) {
       codeBlocks.push(match[0]);
-      textResponse = textResponse.replace(match[0], '[Code generated - see Code tab]');
+      textResponse = textResponse.replace(match[0], '');
     }
-    
+
     const fileBlockRegex = /<file path="[^"]+">[\s\S]*?<\/file>/g;
     while ((match = fileBlockRegex.exec(response)) !== null) {
       if (!codeBlocks.includes(match[0])) {
         codeBlocks.push(match[0]);
-        textResponse = textResponse.replace(match[0], '[Code generated - see Code tab]');
+        textResponse = textResponse.replace(match[0], '');
       }
     }
-    
+
+    // Remove package tags
+    textResponse = textResponse.replace(/<package>[\s\S]*?<\/package>/g, '');
+
+    // Clean up the text response
+    textResponse = textResponse
+      .replace(/\[Code generated - see Code tab\]/g, '')
+      .replace(/I've designed a clean.*landing page[\s\S]*?animations?\./gi, '')
+      .replace(/I have designed a clean.*landing page[\s\S]*?animations?\./gi, '')
+      .replace(/\n{3,}/g, '\n\n')  // Normalize multiple newlines
+      .trim();
+
+    // If code was generated but no meaningful text remains, show a friendly message
+    if (codeBlocks.length > 0 && textResponse.length < 20) {
+      textResponse = "Done! Your page has been generated. Let me know if you'd like any changes.";
+    }
+
     return { textResponse, codeBlocks };
   };
 
@@ -1385,6 +1454,80 @@ export default function BuilderPage() {
       toast.success("Project downloaded successfully!", { id: downloadToastId });
     } catch (error) {
       toast.error("Failed to download project", { id: downloadToastId });
+    }
+  };
+
+  const handleDeploy = async (deployType: 'path' | 'subdomain' = 'path') => {
+    if (!projectId) {
+      toast.error('Please save the project first');
+      return;
+    }
+
+    if (parsedFiles.length === 0) {
+      toast.error('No files to deploy');
+      return;
+    }
+
+    setIsDeploying(true);
+    setDeployDropdownOpen(false);
+    const deployToastId = toast.loading('Deploying project...');
+
+    try {
+      // First save all current files to the project
+      for (const file of parsedFiles) {
+        await fetch(`/api/projects/${projectId}/files`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            path: file.path,
+            content: file.content,
+            language: file.path.endsWith('.jsx') ? 'jsx' : file.path.endsWith('.css') ? 'css' : 'javascript',
+          }),
+        });
+      }
+
+      // Call deploy API
+      const res = await fetch('/api/deploy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          deployType,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to deploy');
+      }
+
+      setDeployUrl(data.deployUrl);
+      toast.success(
+        <div className="flex flex-col gap-2">
+          <span>Project deployed successfully!</span>
+          <a
+            href={data.deployUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm underline hover:text-green-300"
+          >
+            Open {data.deployUrl}
+          </a>
+        </div>,
+        { id: deployToastId, duration: 5000 }
+      );
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to deploy project', { id: deployToastId });
+    } finally {
+      setIsDeploying(false);
+    }
+  };
+
+  const copyDeployUrl = () => {
+    if (deployUrl) {
+      navigator.clipboard.writeText(deployUrl);
+      toast.success('URL copied to clipboard!');
     }
   };
 
@@ -1422,7 +1565,7 @@ export default function BuilderPage() {
   // Removed loading overlay - everything loads in chat now
 
     return (
-    <div className="min-h-screen bg-[#f5f3ef] dark:bg-[#1a1a1a] text-[#1a1a1a] dark:text-[#f5f3ef] transition-colors duration-300">
+    <div className="min-h-screen overflow-x-hidden bg-[#f5f3ef] dark:bg-[#1a1a1a] text-[#1a1a1a] dark:text-[#f5f3ef] transition-colors duration-300">
 
       {/* Header */}
       <header className="border-b border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 bg-[#faf9f7]/80 dark:bg-[#1a1a1a]/80 backdrop-blur-sm sticky top-0 z-30 transition-colors duration-300">
@@ -1451,24 +1594,194 @@ export default function BuilderPage() {
                 </span>
               )}
             </Badge>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={downloadCode}
-              disabled={isLoading || parsedFiles.length === 0}
-              className="px-3 py-2 text-sm border border-[#1a1a1a]/10 dark:border-[#f5f3ef]/20 text-[#1a1a1a] dark:text-[#f5f3ef] rounded-lg hover:bg-[#1a1a1a]/5 dark:hover:bg-[#f5f3ef]/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
-            >
-              <Download className="w-4 h-4" />
-              Export
-            </motion.button>
+            {/* Deploy Dropdown - Premium Design */}
+            <div className="relative" ref={deployDropdownRef}>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setDeployDropdownOpen(!deployDropdownOpen)}
+                disabled={isLoading || isDeploying}
+                className={`group relative h-9 px-3 text-sm font-medium rounded-lg transition-all duration-300 flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden ${
+                  deployUrl
+                    ? 'bg-gradient-to-r from-emerald-500/10 to-teal-500/10 text-emerald-700 dark:text-emerald-400 ring-1 ring-emerald-500/30 hover:ring-emerald-500/50 shadow-sm hover:shadow-emerald-500/10'
+                    : 'bg-gradient-to-r from-amber-500/5 to-orange-500/5 text-[#1a1a1a] dark:text-[#f5f3ef] ring-1 ring-[#1a1a1a]/10 dark:ring-[#f5f3ef]/20 hover:ring-[#8b7355]/40 shadow-sm hover:shadow-[#8b7355]/10'
+                }`}
+              >
+                {/* Animated background shimmer for deployed state */}
+                {deployUrl && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-emerald-400/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+                )}
+
+                <span className="relative flex items-center gap-2.5">
+                  {isDeploying ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : deployUrl ? (
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                    </span>
+                  ) : (
+                    <Rocket className="w-4 h-4" />
+                  )}
+                  {deployUrl ? 'Live' : 'Publish'}
+                  <svg
+                    className={`w-3.5 h-3.5 transition-transform duration-300 ${deployDropdownOpen ? 'rotate-180' : ''}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </span>
+              </motion.button>
+
+              {/* Dropdown Menu - Elevated Design */}
+              {deployDropdownOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                  transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+                  className="absolute right-0 top-full mt-3 w-72 bg-white dark:bg-[#1f1f1f] rounded-2xl shadow-2xl shadow-black/20 dark:shadow-black/40 border border-[#e8e6e3] dark:border-[#333] overflow-hidden z-[100]"
+                >
+                  {/* Success Banner - Live URL */}
+                  {deployUrl && (
+                    <div className="p-4 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border-b border-emerald-100 dark:border-emerald-800/30">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center">
+                          <Check className="w-3.5 h-3.5 text-white" />
+                        </div>
+                        <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
+                          Live on the Web
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 relative">
+                          <input
+                            type="text"
+                            value={deployUrl}
+                            readOnly
+                            className="w-full text-xs bg-white dark:bg-[#1a1a1a] border border-emerald-200 dark:border-emerald-800/50 rounded-lg px-3 py-2 pr-8 text-emerald-800 dark:text-emerald-300 font-medium truncate focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                          />
+                          <Globe className="w-3.5 h-3.5 text-emerald-400 absolute right-2.5 top-1/2 -translate-y-1/2" />
+                        </div>
+                        <button
+                          onClick={copyDeployUrl}
+                          className="p-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-800/30 rounded-lg transition-all duration-200 hover:scale-105 active:scale-95"
+                          title="Copy URL"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </button>
+                        <a
+                          href={deployUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-800/30 rounded-lg transition-all duration-200 hover:scale-105 active:scale-95"
+                          title="Open in new tab"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Empty State - No Files */}
+                  {parsedFiles.length === 0 && (
+                    <div className="p-4 bg-amber-50/50 dark:bg-amber-900/10 border-b border-amber-100 dark:border-amber-800/20">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-800/30 flex items-center justify-center flex-shrink-0">
+                          <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-amber-800 dark:text-amber-300">No Code to Deploy</p>
+                          <p className="text-xs text-amber-600 dark:text-amber-400/70 mt-0.5">
+                            Generate or clone a website first to deploy it.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* No Project State */}
+                  {!projectId && parsedFiles.length > 0 && (
+                    <div className="p-4 bg-blue-50/50 dark:bg-blue-900/10 border-b border-blue-100 dark:border-blue-800/20">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-800/30 flex items-center justify-center flex-shrink-0">
+                          <Save className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-blue-800 dark:text-blue-300">Save Required</p>
+                          <p className="text-xs text-blue-600 dark:text-blue-400/70 mt-0.5">
+                            Project will be saved before deploying.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="p-2">
+                    <p className="px-3 py-2.5 text-[10px] font-bold text-[#8b7355] dark:text-[#a08060] uppercase tracking-[0.15em]">
+                      Choose Deployment
+                    </p>
+
+                    <button
+                      onClick={() => handleDeploy('path')}
+                      disabled={isDeploying || parsedFiles.length === 0}
+                      className="w-full px-3 py-3 text-left text-sm rounded-xl transition-all duration-200 flex items-center gap-3 hover:bg-[#f5f3ef] dark:hover:bg-[#2a2a2a] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent group"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/10 to-indigo-500/10 dark:from-blue-500/20 dark:to-indigo-500/20 flex items-center justify-center ring-1 ring-blue-500/20 group-hover:ring-blue-500/40 transition-all">
+                        <Globe className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-[#1a1a1a] dark:text-[#f5f3ef]">Dynamic Page</p>
+                        <p className="text-xs text-[#8b7355] dark:text-[#a08060] mt-0.5">your-site.com/p/project-name</p>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-[#8b7355] opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+
+                    <button
+                      onClick={() => handleDeploy('subdomain')}
+                      disabled={isDeploying || parsedFiles.length === 0}
+                      className="w-full px-3 py-3 text-left text-sm rounded-xl transition-all duration-200 flex items-center gap-3 hover:bg-[#f5f3ef] dark:hover:bg-[#2a2a2a] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent group mt-1"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/10 to-purple-500/10 dark:from-violet-500/20 dark:to-purple-500/20 flex items-center justify-center ring-1 ring-violet-500/20 group-hover:ring-violet-500/40 transition-all">
+                        <Zap className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-[#1a1a1a] dark:text-[#f5f3ef]">Subdomain</p>
+                        <p className="text-xs text-[#8b7355] dark:text-[#a08060] mt-0.5">project-name.your-site.com</p>
+                      </div>
+                      <Sparkles className="w-4 h-4 text-violet-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+
+                    <div className="h-px bg-gradient-to-r from-transparent via-[#e8e6e3] dark:via-[#333] to-transparent my-3" />
+
+                    <button
+                      onClick={downloadCode}
+                      disabled={isLoading || parsedFiles.length === 0}
+                      className="w-full px-3 py-3 text-left text-sm rounded-xl transition-all duration-200 flex items-center gap-3 hover:bg-[#f5f3ef] dark:hover:bg-[#2a2a2a] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent group"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gray-500/10 to-slate-500/10 dark:from-gray-500/20 dark:to-slate-500/20 flex items-center justify-center ring-1 ring-gray-500/20 group-hover:ring-gray-500/40 transition-all">
+                        <Download className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-[#1a1a1a] dark:text-[#f5f3ef]">Download ZIP</p>
+                        <p className="text-xs text-[#8b7355] dark:text-[#a08060] mt-0.5">Export source code</p>
+                      </div>
+                      <Package className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <div className="flex h-[calc(100vh-73px)]">
+      <div className="flex h-[calc(100vh-73px)] overflow-x-hidden">
         {/* Sidebar */}
-        <aside className="w-64 border-r border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 bg-[#faf9f7] dark:bg-[#252525] flex flex-col transition-colors duration-300">
+        <aside className="w-64 border-r border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 bg-[#faf9f7] dark:bg-[#252525] flex flex-col overflow-x-hidden transition-colors duration-300">
           {/* URL Input */}
           <motion.div 
             className="p-6 border-b border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10"
@@ -1631,7 +1944,7 @@ export default function BuilderPage() {
         </aside>
 
         {/* Main Content Area */}
-        <main className="flex-1 flex flex-col bg-[#f5f3ef] dark:bg-[#1a1a1a] transition-colors duration-300">
+        <main className="flex-1 flex flex-col min-w-0 overflow-x-hidden bg-[#f5f3ef] dark:bg-[#1a1a1a] transition-colors duration-300">
           {/* Tabs */}
           <div className="border-b border-[#1a1a1a]/10 dark:border-[#f5f3ef]/10 bg-[#faf9f7] dark:bg-[#252525] transition-colors duration-300 relative">
             <div className="flex px-6 relative">
@@ -1700,7 +2013,7 @@ export default function BuilderPage() {
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden min-w-0">
             {/* Chat Tab */}
             {activeTab === "chat" && (
               <div className="h-full flex flex-col bg-[#f5f3ef] dark:bg-[#1a1a1a] transition-colors duration-300 relative">
@@ -1809,8 +2122,8 @@ export default function BuilderPage() {
                 </div>
 
                 {/* Pre-filled Prompts - Dynamic based on code state */}
-                <div className="px-5 pt-4 pb-2 border-t border-[#e8e6e3] dark:border-[#f5f3ef]/10 bg-[#f5f3ef] dark:bg-[#1a1a1a] transition-colors duration-300">
-                  <div className="flex items-center gap-2 max-w-4xl mx-auto flex-wrap">
+                <div className="px-5 pt-4 pb-2 border-t border-[#e8e6e3] dark:border-[#f5f3ef]/10 bg-[#f5f3ef] dark:bg-[#1a1a1a] transition-colors duration-300 min-w-0">
+                  <div className="flex items-center gap-2 max-w-4xl mx-auto flex-wrap min-w-0 overflow-x-hidden">
                     {(parsedFiles.length > 0 ? [
                       { label: "Make it dark mode", full: "Convert this design to a dark mode theme. Use deep charcoal backgrounds (#0f0f0f, #1a1a1a), off-white text (#f5f3ef), and adjust accent colors to be more vibrant against the dark background. Update all cards, sections, and components to work beautifully in dark mode." },
                       { label: "Make it blue-themed", full: "Transform this design into a blue-themed color scheme. Use deep navy backgrounds (#0a1929, #0d2137), crisp white text, and blue accents (#3b82f6, #60a5fa). Ensure all components, cards, and sections use the blue palette harmoniously." },
@@ -1950,7 +2263,7 @@ export default function BuilderPage() {
 
             {/* Code Tab */}
             {activeTab === "code" && (
-              <div ref={codeContainerRef} className="h-full flex flex-col bg-[#f5f3ef] dark:bg-[#1a1a1a]">
+              <div ref={codeContainerRef} className="h-full flex flex-col min-w-0 overflow-x-hidden bg-[#f5f3ef] dark:bg-[#1a1a1a]">
                 {selectedFile && parsedFiles.find(f => f.path === selectedFile) ? (
                   <>
                     {/* Code Header with Actions */}
@@ -1998,7 +2311,7 @@ export default function BuilderPage() {
                     </div>
 
                     {/* Code Editor */}
-                    <div className="flex-1 p-6 overflow-auto">
+                    <div className="flex-1 p-6 overflow-auto min-w-0">
                       <CodeEditor
                         value={editedContent}
                         onValueChange={handleCodeChange}
@@ -2012,6 +2325,9 @@ export default function BuilderPage() {
                               margin: 0,
                               fontSize: '0.875rem',
                               fontFamily: 'monospace',
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-all',
+                              overflowWrap: 'break-word',
                             }}
                           >
                             {code}
@@ -2024,8 +2340,11 @@ export default function BuilderPage() {
                           backgroundColor: '#1a1a1a',
                           borderRadius: '0.25rem',
                           minHeight: '100%',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-all',
+                          overflowWrap: 'break-word',
                         }}
-                        textareaClassName="outline-none"
+                        textareaClassName="outline-none whitespace-pre-wrap break-all"
                       />
                     </div>
                   </>

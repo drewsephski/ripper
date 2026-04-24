@@ -95,6 +95,13 @@ model Project {
   sandboxId     String?
   sandboxUrl    String?
 
+  // Public deployment state
+  deployUrl     String?   // Full public URL to the deployed site
+  deployType    String?   // 'subdomain' or 'path'
+  deploySlug    String?   // For subdomain: the subdomain name; for path: the path slug
+  isPublic      Boolean   @default(false)
+  deployedAt    DateTime?
+
   // Generated code storage
   files         File[]
 
@@ -109,6 +116,8 @@ model Project {
   updatedAt     DateTime @updatedAt
 
   @@index([userId])
+  @@index([deploySlug])
+  @@index([isPublic])
 }
 
 model File {

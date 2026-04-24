@@ -73,7 +73,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { name, description, sourceUrl, style, status, sandboxId, sandboxUrl } = body;
+    const { name, description, sourceUrl, style, status, sandboxId, sandboxUrl, deployUrl, deployType, deploySlug, isPublic, deployedAt } = body;
 
     // Verify project belongs to user
     const existingProject = await prisma.project.findUnique({
@@ -102,6 +102,11 @@ export async function PUT(
         ...(status !== undefined && { status }),
         ...(sandboxId !== undefined && { sandboxId }),
         ...(sandboxUrl !== undefined && { sandboxUrl }),
+        ...(deployUrl !== undefined && { deployUrl }),
+        ...(deployType !== undefined && { deployType }),
+        ...(deploySlug !== undefined && { deploySlug }),
+        ...(isPublic !== undefined && { isPublic }),
+        ...(deployedAt !== undefined && { deployedAt }),
       },
     });
 
